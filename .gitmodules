@@ -1,0 +1,3 @@
+[submodule "Submodules/Serial_Port_Library"]
+	path = Submodules/Serial_Port_Library
+	url = https://github.com/RICCIARDI-Adrien/Serial_Port_Library
