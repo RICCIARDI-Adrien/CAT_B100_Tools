@@ -29,4 +29,10 @@ int ATCommandReceiveAnswerLine(TSerialPortID Serial_Port_ID, char *Pointer_Strin
  */
 int ATCommandSendCommand(TSerialPortID Serial_Port_ID, char *Pointer_String_Command);
 
+/** TODO
+ * @return -1 if the provided hexadecimal string is invalid (it contains non-hexadecimal characters, there is an odd amount of characters leading to incomplete hexadecimal bytes, ...),
+ * @return 0 on success.
+ */
+int ATCommandConvertHexadecimalToBinary(char *Pointer_String_Hexadecimal, unsigned char *Pointer_Output_Buffer, unsigned int Output_Buffer_Size);
+
 #endif

@@ -6,6 +6,25 @@
 #include <string.h>
 
 //-------------------------------------------------------------------------------------------------
+// Private functions
+//-------------------------------------------------------------------------------------------------
+/** TODO */
+int ATCommandGetHexadecimalNibbleBinaryValue(char Hexadecimal_Nibble)
+{
+	// Convert any hexadecimal letters to uppercase
+	if ((Hexadecimal_Nibble >= 'a') && (Hexadecimal_Nibble <= 'f')) Hexadecimal_Nibble -= 32;
+
+	// Convert digits
+	if ((Hexadecimal_Nibble >= '0') && (Hexadecimal_Nibble <= '9')) return Hexadecimal_Nibble - '0';
+
+	// Convert letters
+	if ((Hexadecimal_Nibble >= 'A') || (Hexadecimal_Nibble <= 'F')) return Hexadecimal_Nibble - 'A' + 10;
+
+	// This is an invalid hexadecimal character
+	return -1;
+}
+
+//-------------------------------------------------------------------------------------------------
 // Public functions
 //-------------------------------------------------------------------------------------------------
 int ATCommandReceiveAnswerLine(TSerialPortID Serial_Port_ID, char *Pointer_String_Answer, unsigned int Maximum_Length)
@@ -59,4 +78,33 @@ int ATCommandSendCommand(TSerialPortID Serial_Port_ID, char *Pointer_String_Comm
 	while (SerialPortReadByte(Serial_Port_ID) != '\n') ;
 
 	return 0;
+}
+
+int ATCommandConvertHexadecimalToBinary(char *Pointer_String_Hexadecimal, unsigned char *Pointer_Output_Buffer, unsigned int Output_Buffer_Size)
+{
+	unsigned char Byte;
+	unsigned int Converted_Data_Size = 0;
+
+	// Make sure the string size is a multiple of 2, so all hexadecimal bytes are complete
+	if ((strlen(Pointer_String_Hexadecimal) % 2) != 0) return -1;
+
+	// Convert all characters to their binary representation
+	while ((*Pointer_String_Hexadecimal != 0) && (Converted_Data_Size < Output_Buffer_Size))
+	{
+		// Convert both hexadecimal nibbles to form a complete byte
+		Byte = (ATCommandGetHexadecimalNibbleBinaryValue(*Pointer_String_Hexadecimal) << 4) & 0xF0;
+		Pointer_String_Hexadecimal++;
+		Byte |= ATCommandGetHexadecimalNibbleBinaryValue(*Pointer_String_Hexadecimal) & 0x0F;
+		Pointer_String_Hexadecimal++;
+
+		// Store the byte to the destination buffer
+		*Pointer_Output_Buffer = Byte;
+		Pointer_Output_Buffer++;
+		Converted_Data_Size++;
+	}
+
+	// Stop if there no more room in the output buffer
+	if (Converted_Data_Size >= Output_Buffer_Size) return -1;
+
+	return (int) Converted_Data_Size;
 }
