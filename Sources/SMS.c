@@ -25,6 +25,15 @@ typedef enum
 	SMS_MESSAGE_STORAGE_LOCATION_DRAFT = 7
 } TSMSMessageStorageLocation;
 
+/** Hold the meaningful parts of a SMS record. */
+typedef struct
+{
+	char String_Phone_Number[16]; //<! The International Telecommunication Union (ITU) specified that a phone number can't be longer than 15 digits.
+	TSMSMessageStorageLocation Message_Storage_Location;
+	int Is_Stored_On_Multiple_Records;
+	int Record_ID;
+} TSMSRecord;
+
 //-------------------------------------------------------------------------------------------------
 // Private functions
 //-------------------------------------------------------------------------------------------------
@@ -109,19 +118,37 @@ static void SMSDecode16BitText(unsigned char *Pointer_Text, int Bytes_Count, cha
 
 /** TODO
  * @param Pointer_Message_Buffer The raw message, it must be of type SMS_MESSAGE_STORAGE_LOCATION_SENT or SMS_MESSAGE_STORAGE_LOCATION_DRAFT.
- * @param Pointer_String_Phone_Number On output, contain the phone number if it is present in the message. Otherwise, the string will be set to empty. Make sure to provide a string with enough room for the data that will be stored inside.
+ * @param Pointer_SMS_Record On output, fill the phone number if it is present in the message (if no phone number is present the string will be set to empty). Also fill the multiple records boolean and record ID if any.
  * @return A positive number indicating the offset of the text payload in the message buffer.
  */
-static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, char *Pointer_String_Phone_Number, int *Pointer_Is_Wide_Character_Encoding)
+static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
 {
 	int Phone_Number_Length, Is_Least_Significant_Nibble_Selected = 1, i, Text_Payload_Offset = 0;
-	char Digit;
+	char Digit, *Pointer_String_Phone_Number;
+	unsigned char Byte;
 
 	// Bypass currently unknown bytes
-	Pointer_Message_Buffer += 4;
-	Text_Payload_Offset += 4;
+	Pointer_Message_Buffer += 2;
+	Text_Payload_Offset += 2;
+
+	// Is this message stored on multiple records ?
+	Byte = *Pointer_Message_Buffer & 0xF0;
+	if (Byte == 0x90) Pointer_SMS_Record->Is_Stored_On_Multiple_Records = 0;
+	else if (Byte == 0xD0) Pointer_SMS_Record->Is_Stored_On_Multiple_Records = 1;
+	else
+	{
+		printf("Error : unknown multiple record indicator in short header message.\n");
+		return -1;
+	}
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Bypass currently unknown byte
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
 
 	// Retrieve phone number
+	Pointer_String_Phone_Number = Pointer_SMS_Record->String_Phone_Number;
 	Phone_Number_Length = *Pointer_Message_Buffer;
 	Pointer_Message_Buffer += 2; // Bypass an unknown byte following the phone number length
 	Text_Payload_Offset += 2;
@@ -168,7 +195,25 @@ static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, ch
 	Text_Payload_Offset++;
 
 	// Bypass unknown byte
+	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
+
+	// Retrieve the text size in bytes
+	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Retrieve record ID if any
+	if (Pointer_SMS_Record->Is_Stored_On_Multiple_Records)
+	{
+		// Bypass the initial 0x05 byte, which might represent the record ID field size in bytes, and the following unknown byte
+		Pointer_Message_Buffer += 2;
+		Text_Payload_Offset += 2;
+
+		// Consider all 4 bytes as the ID because they can fit in the provided "int" variable
+		Pointer_SMS_Record->Record_ID = (Pointer_Message_Buffer[0] << 24) | (Pointer_Message_Buffer[1] << 16) | (Pointer_Message_Buffer[2] << 8) | Pointer_Message_Buffer[3];
+		Text_Payload_Offset += 4;
+	}
 
 	return Text_Payload_Offset;
 }
@@ -177,12 +222,12 @@ static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, ch
  * @return -2 if the provided content string buffer is too small,
  * @return -1 if the SMS with the specified number content could not be read,
  */
-static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number, char *Pointer_String_Phone_Number, char *Pointer_String_Text, TSMSMessageStorageLocation *Pointer_Message_Storage_Location)
+static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number, TSMSRecord *Pointer_SMS_Record, char *Pointer_String_Text)
 {
 	static char String_Temporary[2048];
 	static unsigned char Temporary_Buffer[2048];
 	char String_Command[64];
-	int Converted_Data_Size, Text_Payload_Offset, Is_Wide_Character_Encoding;
+	int Converted_Data_Size, Text_Payload_Offset, Is_Wide_Character_Encoding, Text_Payload_Bytes_Count;
 	TSMSMessageStorageLocation Message_Storage_Location;
 
 	// Send the command
@@ -193,8 +238,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
 	printf("info : %s\n", String_Temporary);
 	if (sscanf(String_Temporary, "+EMGR: %d", (int *) &Message_Storage_Location) != 1) return -1; // Extract message storage location information
-	*Pointer_Message_Storage_Location = Message_Storage_Location;
-	printf("Message_Storage_Location=%d\n", Message_Storage_Location);
+	Pointer_SMS_Record->Message_Storage_Location = Message_Storage_Location;
 
 	// Wait for the message content
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
@@ -212,11 +256,13 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	// Sent and draft messages share the same header format
 	if ((Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_SENT) || (Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_DRAFT))
 	{
-		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_String_Phone_Number, &Is_Wide_Character_Encoding);
+		// Retrieve all useful information from the message header
+		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
+		if (Text_Payload_Offset < 0) return -1;
 
 		// Decode text
-		if (Is_Wide_Character_Encoding) SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset + 1], Temporary_Buffer[Text_Payload_Offset], Pointer_String_Text);
-		else SMSDecode7BitText(&Temporary_Buffer[Text_Payload_Offset + 1], Temporary_Buffer[Text_Payload_Offset], Pointer_String_Text);
+		if (Is_Wide_Character_Encoding) SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_String_Text);
+		else SMSDecode7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_String_Text);
 	}
 	else return -2; // Unsupported message format (for now)
 
@@ -228,16 +274,21 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 //-------------------------------------------------------------------------------------------------
 int SMSDownload(TSerialPortID Serial_Port_ID)
 {
-	char String_Phone_Number[32], String_Text[SMS_TEXT_STRING_MAXIMUM_SIZE];
+	char String_Text[SMS_TEXT_STRING_MAXIMUM_SIZE];
 	int i;
-	TSMSMessageStorageLocation Message_Storage_Location;
+	TSMSRecord SMS_Record;
 
 	for (i = 1; i <= 50; i++)
 	{
 		printf("\033[32mSMS number = %d\033[0m\n", i);
 		memset(String_Text, 0, sizeof(String_Text));
-		if (SMSDownloadSingleRecord(Serial_Port_ID, i, String_Phone_Number, String_Text, &Message_Storage_Location) == 0) printf("Message %d phone number = %s, text = \"%s\", message location = %d\n\n", i, String_Phone_Number, String_Text, Message_Storage_Location);
-		else printf("\033[31mUnsupported\033[0m\n\n");
+		if (SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Record, String_Text) == 0)
+		{
+			printf("Message %d : phone number = %s, text = \"%s\", message storage location = %d, is stored on multiple records = %d", i, SMS_Record.String_Phone_Number, String_Text, SMS_Record.Message_Storage_Location, SMS_Record.Is_Stored_On_Multiple_Records);
+			if (SMS_Record.Is_Stored_On_Multiple_Records) printf(", record ID = 0x%08X", SMS_Record.Record_ID);
+		}
+		else printf("\033[31mUnsupported\033[0m");
+		printf("\n\n");
 	}
 
 	return 0;
