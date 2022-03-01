@@ -3,9 +3,16 @@
  * @author Adrien RICCIARDI
  */
 #include <AT_Command.h>
+#include <iconv.h>
 #include <SMS.h>
 #include <stdio.h>
 #include <string.h>
+
+//-------------------------------------------------------------------------------------------------
+// Private constants
+//-------------------------------------------------------------------------------------------------
+/** The size in bytes of the buffer holding a SMS text. */
+#define SMS_TEXT_STRING_MAXIMUM_SIZE 512
 
 //-------------------------------------------------------------------------------------------------
 // Private types
@@ -74,12 +81,38 @@ static void SMSDecode7BitText(unsigned char *Pointer_Compressed_Text, int Compre
 	*Pointer_String_Uncompressed_Text = 0;
 }
 
+/** Convert an UTF-16 big endian text to UTF-8.
+ * @param Pointer_Text The raw text to decode.
+ * @param Bytes_Count The raw text size in bytes.
+ * @param Pointer_String_Decoded_Text On output, contain the text converted to UTF-8.
+ */
+static void SMSDecode16BitText(unsigned char *Pointer_Text, int Bytes_Count, char *Pointer_String_Decoded_Text)
+{
+	iconv_t Conversion_Descriptor;
+	size_t Source_String_Remaining_Bytes, Destination_String_Available_Bytes;
+
+	// Convert it to UTF-8
+	// Configure character sets
+	Conversion_Descriptor = iconv_open("UTF-8", "UTF-16BE");
+	if (Conversion_Descriptor == (iconv_t) -1)
+	{
+		printf("Error : failed to create the character set conversion descriptor, skipping text conversion to UTF-8.\n");
+		return;
+	}
+
+	// Do conversion
+	Source_String_Remaining_Bytes = Bytes_Count;
+	Destination_String_Available_Bytes = SMS_TEXT_STRING_MAXIMUM_SIZE;
+	if (iconv(Conversion_Descriptor, (char **) &Pointer_Text, &Source_String_Remaining_Bytes, &Pointer_String_Decoded_Text, &Destination_String_Available_Bytes) == (size_t) -1) printf("Error : text conversion to UTF-8 failed.\n");
+	iconv_close(Conversion_Descriptor);
+}
+
 /** TODO
  * @param Pointer_Message_Buffer The raw message, it must be of type SMS_MESSAGE_STORAGE_LOCATION_SENT or SMS_MESSAGE_STORAGE_LOCATION_DRAFT.
  * @param Pointer_String_Phone_Number On output, contain the phone number if it is present in the message. Otherwise, the string will be set to empty. Make sure to provide a string with enough room for the data that will be stored inside.
  * @return A positive number indicating the offset of the text payload in the message buffer.
  */
-static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, char *Pointer_String_Phone_Number)
+static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, char *Pointer_String_Phone_Number, int *Pointer_Is_Wide_Character_Encoding)
 {
 	int Phone_Number_Length, Is_Least_Significant_Nibble_Selected = 1, i, Text_Payload_Offset = 0;
 	char Digit;
@@ -115,13 +148,27 @@ static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, ch
 	}
 	// Adjust read bytes count
 	Text_Payload_Offset += Phone_Number_Length / 2;
-	if (Phone_Number_Length & 1) Text_Payload_Offset++; // Take into account the one more byte if the phone number length is odd
+	if (Phone_Number_Length & 1) // Take into account the one more byte if the phone number length is odd
+	{
+		Pointer_Message_Buffer++;
+		Text_Payload_Offset++;
+	}
 
 	// Terminate the string
 	*Pointer_String_Phone_Number = 0;
 
-	// Bypass unknown bytes
-	Text_Payload_Offset += 3;
+	// Bypass unknown byte
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Determine whether the text is 7-bit ASCII encoded or UTF-16 encoded
+	if (*Pointer_Message_Buffer & 0x08) *Pointer_Is_Wide_Character_Encoding = 1;
+	else *Pointer_Is_Wide_Character_Encoding = 0;
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Bypass unknown byte
+	Text_Payload_Offset++;
 
 	return Text_Payload_Offset;
 }
@@ -135,7 +182,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	static char String_Temporary[2048];
 	static unsigned char Temporary_Buffer[2048];
 	char String_Command[64];
-	int Converted_Data_Size, Text_Payload_Offset;
+	int Converted_Data_Size, Text_Payload_Offset, Is_Wide_Character_Encoding;
 	TSMSMessageStorageLocation Message_Storage_Location;
 
 	// Send the command
@@ -165,8 +212,11 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	// Sent and draft messages share the same header format
 	if ((Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_SENT) || (Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_DRAFT))
 	{
-		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_String_Phone_Number);
-		SMSDecode7BitText(&Temporary_Buffer[Text_Payload_Offset + 1], Temporary_Buffer[Text_Payload_Offset], Pointer_String_Text);
+		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_String_Phone_Number, &Is_Wide_Character_Encoding);
+
+		// Decode text
+		if (Is_Wide_Character_Encoding) SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset + 1], Temporary_Buffer[Text_Payload_Offset], Pointer_String_Text);
+		else SMSDecode7BitText(&Temporary_Buffer[Text_Payload_Offset + 1], Temporary_Buffer[Text_Payload_Offset], Pointer_String_Text);
 	}
 	else return -2; // Unsupported message format (for now)
 
@@ -178,13 +228,14 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 //-------------------------------------------------------------------------------------------------
 int SMSDownload(TSerialPortID Serial_Port_ID)
 {
-	char String_Phone_Number[32], String_Text[512];
+	char String_Phone_Number[32], String_Text[SMS_TEXT_STRING_MAXIMUM_SIZE];
 	int i;
 	TSMSMessageStorageLocation Message_Storage_Location;
 
-	for (i = 1; i <= 30; i++)
+	for (i = 1; i <= 50; i++)
 	{
 		printf("\033[32mSMS number = %d\033[0m\n", i);
+		memset(String_Text, 0, sizeof(String_Text));
 		if (SMSDownloadSingleRecord(Serial_Port_ID, i, String_Phone_Number, String_Text, &Message_Storage_Location) == 0) printf("Message %d phone number = %s, text = \"%s\", message location = %d\n\n", i, String_Phone_Number, String_Text, Message_Storage_Location);
 		else printf("\033[31mUnsupported\033[0m\n\n");
 	}
