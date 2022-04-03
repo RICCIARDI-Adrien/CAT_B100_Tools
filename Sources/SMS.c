@@ -39,16 +39,19 @@ typedef struct
 //-------------------------------------------------------------------------------------------------
 /** Uncompress 7-bit encoded SMS text.
  * @param Pointer_Compressed_Text The compressed text received from the phone.
- * @param Compressed_Bytes_Count The compressed text length.
+ * @param Compressed_Bytes_Count The uncompressed text length.
  * @param Pointer_String_Uncompressed_Text On output, contain the uncompressed text converted to 8-bit ASCII. Make sure the provided string is large enough.
  */
-static void SMSDecode7BitText(unsigned char *Pointer_Compressed_Text, int Compressed_Bytes_Count, char *Pointer_String_Uncompressed_Text)
+static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int Bytes_Count, char *Pointer_String_Uncompressed_Text)
 {
 	int i, Index = 7;
 	unsigned char Byte, Mask = 0x7F, Leftover_Bits = 0;
+	char *Pointer_String_Uncompressed_Text_Initial_Value = Pointer_String_Uncompressed_Text;
 
-	// Go through all compressed bytes
-	for (i = 0; i < Compressed_Bytes_Count; i++)
+	printf("[SMSDecode7BitText] Compressed_Bytes_Count = '%d'\n", Bytes_Count);
+	
+	// Go through all compressed bytes, stopping in case the message is wrong and does not include the terminating character
+	for (i = 0; i < Bytes_Count; i++)
 	{
 		// Retrieve the most significant bits
 		Byte = *Pointer_Compressed_Text & Mask;
@@ -59,6 +62,9 @@ static void SMSDecode7BitText(unsigned char *Pointer_Compressed_Text, int Compre
 		// Make sure bit 7 is not set
 		Byte &= 0x7F;
 
+		// TODO
+		if (Byte == 0) break;
+
 		// Keep the next byte least significant bits
 		Leftover_Bits = *Pointer_Compressed_Text & ~Mask;
 		Leftover_Bits >>= Index;
@@ -67,12 +73,17 @@ static void SMSDecode7BitText(unsigned char *Pointer_Compressed_Text, int Compre
 		Pointer_Compressed_Text++;
 		*Pointer_String_Uncompressed_Text = (char) Byte;
 		Pointer_String_Uncompressed_Text++;
+		
+		printf("[SMSDecode7BitText] char = '%c', 0x%02X\n", Byte, Byte);
 
-		// 7 bytes encode 8 characters, si reset the state machine when 7 input bytes have been processed
+		// 7 bytes encode 8 characters, so reset the state machine when 7 input bytes have been processed
 		if (Index <= 1)
 		{
 			// When 7 input bytes have been processed, a whole character is still contained in the leftover bits, handle it here
-			*Pointer_String_Uncompressed_Text = Leftover_Bits & 0x7F;
+			Byte = Leftover_Bits & 0x7F;
+			if (Byte == 0) break;
+			*Pointer_String_Uncompressed_Text = Byte;
+			printf("[SMSDecode7BitText] char = '%c', 0x%02X\n", Leftover_Bits & 0x7F, Leftover_Bits & 0x7F);
 			Pointer_String_Uncompressed_Text++;
 
 			Index = 7;
@@ -87,7 +98,12 @@ static void SMSDecode7BitText(unsigned char *Pointer_Compressed_Text, int Compre
 	}
 
 	// Terminate the output string
-	*Pointer_String_Uncompressed_Text = 0;
+	Pointer_String_Uncompressed_Text_Initial_Value[Bytes_Count] = 0;
+}
+
+static void SMSDecode7BitText(char *Pointer_String_Uncompressed_Text, int Bytes_Count, char *Pointer_String_Decoded_Text)
+{
+	SMSUncompress7BitText(Pointer_String_Uncompressed_Text, Bytes_Count, Pointer_String_Decoded_Text);
 }
 
 /** Convert an UTF-16 big endian text to UTF-8.
@@ -259,6 +275,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 		// Retrieve all useful information from the message header
 		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
 		if (Text_Payload_Offset < 0) return -1;
+		printf("Text_Payload_Bytes_Count=%d, Is_Wide_Character_Encoding=%d\n", Text_Payload_Bytes_Count, Is_Wide_Character_Encoding);
 
 		// Decode text
 		if (Is_Wide_Character_Encoding) SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_String_Text);
@@ -278,13 +295,13 @@ int SMSDownload(TSerialPortID Serial_Port_ID)
 	int i;
 	TSMSRecord SMS_Record;
 
-	for (i = 1; i <= 50; i++)
+	for (i = 1; i <= 100; i++)
 	{
 		printf("\033[32mSMS number = %d\033[0m\n", i);
 		memset(String_Text, 0, sizeof(String_Text));
 		if (SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Record, String_Text) == 0)
 		{
-			printf("Message %d : phone number = %s, text = \"%s\", message storage location = %d, is stored on multiple records = %d", i, SMS_Record.String_Phone_Number, String_Text, SMS_Record.Message_Storage_Location, SMS_Record.Is_Stored_On_Multiple_Records);
+			printf("Message %d : phone number = %s, text = \"%s\" (len = %lu), message storage location = %d, is stored on multiple records = %d", i, SMS_Record.String_Phone_Number, String_Text, strlen(String_Text), SMS_Record.Message_Storage_Location, SMS_Record.Is_Stored_On_Multiple_Records);
 			if (SMS_Record.Is_Stored_On_Multiple_Records) printf(", record ID = 0x%08X", SMS_Record.Record_ID);
 		}
 		else printf("\033[31mUnsupported\033[0m");
