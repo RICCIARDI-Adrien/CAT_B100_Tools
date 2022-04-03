@@ -306,8 +306,61 @@ static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSM
 	unsigned char Byte;
 
 	// Bypass currently unknown bytes
-	Pointer_Message_Buffer += 19;
-	Text_Payload_Offset += 19;
+	Pointer_Message_Buffer += 9;
+	Text_Payload_Offset += 9;
+
+	// Retrieve phone number
+	Pointer_String_Phone_Number = Pointer_SMS_Record->String_Phone_Number;
+	Phone_Number_Length = *Pointer_Message_Buffer;
+	Pointer_Message_Buffer += 2; // Bypass an unknown byte following the phone number length
+	Text_Payload_Offset += 2;
+
+	// Is the phone number provided ?
+	if (Phone_Number_Length > 0)
+	{
+		// Extract the phone number (each digit is stored in a byte nibble)
+		for (i = 0; i < Phone_Number_Length; i++)
+		{
+			// Extract the correct digit from the byte
+			if (Is_Least_Significant_Nibble_Selected) Digit = *Pointer_Message_Buffer & 0x0F;
+			else Digit = *Pointer_Message_Buffer >> 4;
+
+			// Add the digit to the string
+			Digit += '0'; // Convert the digit to ASCII
+			*Pointer_String_Phone_Number = Digit;
+			Pointer_String_Phone_Number++;
+
+			// Select the next nibble to extract
+			if (Is_Least_Significant_Nibble_Selected) Is_Least_Significant_Nibble_Selected = 0;
+			else
+			{
+				Is_Least_Significant_Nibble_Selected = 1;
+				Pointer_Message_Buffer++; // Both digits have been extracted from the byte, go to next byte
+			}
+		}
+		// Adjust read bytes count
+		Text_Payload_Offset += Phone_Number_Length / 2;
+		if (Phone_Number_Length & 1) // Take into account the one more byte if the phone number length is odd
+		{
+			Pointer_Message_Buffer++;
+			Text_Payload_Offset++;
+		}
+
+		// Terminate the string
+		*Pointer_String_Phone_Number = 0;
+	}
+	// No phone number was provided, make sure a string is present to tell that
+	else strcpy(Pointer_String_Phone_Number, "<Unspecified>");
+
+	// Bypass unknown byte
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Determine whether the text is 7-bit ASCII encoded or UTF-16 encoded
+	if (*Pointer_Message_Buffer & 0x08) *Pointer_Is_Wide_Character_Encoding = 1;
+	else *Pointer_Is_Wide_Character_Encoding = 0;
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
 
 	// Extract message reception date and time
 	// Year
@@ -330,9 +383,7 @@ static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSM
 	Pointer_SMS_Record->Time_Seconds = ((Byte & 0x0F) * 10) + (Byte >> 4);
 	Pointer_Message_Buffer += 6;
 	Text_Payload_Offset += 6;
-	
-	printf("y=%d m=%02d d=%02d h=%02d m=%02d s=%02d\n", Pointer_SMS_Record->Date_Year, Pointer_SMS_Record->Date_Month, Pointer_SMS_Record->Date_Day, Pointer_SMS_Record->Time_Hour, Pointer_SMS_Record->Time_Minutes, Pointer_SMS_Record->Time_Seconds);
-	
+
 	// Bypass currently unknown byte
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
@@ -341,9 +392,6 @@ static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSM
 	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
-	
-	// TEST
-	*Pointer_Is_Wide_Character_Encoding = 0;
 
 	return Text_Payload_Offset;
 }
@@ -392,45 +440,40 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 		// Retrieve all useful information from the message header
 		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
 		if (Text_Payload_Offset < 0) return -1;
-
-		// Decode text
-		if (Is_Wide_Character_Encoding)
-		{
-			// Quick fix for multi records messages text string trailing characters (TODO find a better solution)
-			if ((Pointer_SMS_Record->Records_Count > 1) && (Text_Payload_Bytes_Count > 6)) Text_Payload_Bytes_Count -= 6;
-
-			// Convert UTF-16 to UTF-8
-			SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_SMS_Record->String_Text);
-		}
-		else
-		{
-			// Extract the text content with the custom character set for extended ASCII
-			SMSUncompress7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, String_Temporary);
-
-			// Convert custom character set to UTF-8
-			SMSConvert7BitExtendedASCII(String_Temporary, Pointer_SMS_Record->String_Text);
-		}
-
-		// Tell that record contains data
-		Pointer_SMS_Record->Is_Data_Present = 1;
 	}
-	else
+	// Inbox messages use a longer header
+	else if (Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_INBOX)
 	{
 		// Retrieve all useful information from the message header
 		Text_Payload_Offset = SMSDecodeLongHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
 		if (Text_Payload_Offset < 0) return -1;
-		
-		// TODO
-		
+	}
+	else
+	{
+		printf("Error : unknown SMS message storage location %d.\n", Message_Storage_Location);
+		return -1;
+	}
+
+	// Decode text
+	if (Is_Wide_Character_Encoding)
+	{
+		// Quick fix for multi records messages text string trailing characters (TODO find a better solution)
+		if ((Pointer_SMS_Record->Records_Count > 1) && (Text_Payload_Bytes_Count > 6)) Text_Payload_Bytes_Count -= 6;
+
+		// Convert UTF-16 to UTF-8
+		SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_SMS_Record->String_Text);
+	}
+	else
+	{
 		// Extract the text content with the custom character set for extended ASCII
 		SMSUncompress7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, String_Temporary);
 
 		// Convert custom character set to UTF-8
 		SMSConvert7BitExtendedASCII(String_Temporary, Pointer_SMS_Record->String_Text);
-		
-		// Tell that record contains data
-		Pointer_SMS_Record->Is_Data_Present = 1;
 	}
+
+	// Tell that record contains data
+	Pointer_SMS_Record->Is_Data_Present = 1;
 
 	return 0;
 }
@@ -441,7 +484,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
  * @return -1 if an error occurred,
  * @return 0 on success.
  */
-static int SMSWriteMessageHeader(FILE *Pointer_Output_File, TSMSRecord *Pointer_SMS_Record)
+static int SMSWriteOutputMessageInformation(FILE *Pointer_Output_File, TSMSRecord *Pointer_SMS_Record)
 {
 	char String_Temporary[256], String_Temporary_2[32];
 
@@ -568,7 +611,7 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 			if (Pointer_SMS_Record->Record_Number > 1) continue;
 
 			// This is the initial record, write its content to the appropriate file
-			if (SMSWriteMessageHeader(Pointer_File, Pointer_SMS_Record) != 0) return -1;
+			if (SMSWriteOutputMessageInformation(Pointer_File, Pointer_SMS_Record) != 0) return -1;
 			fprintf(Pointer_File, "%s", Pointer_SMS_Record->String_Text);
 
 			// Search for the next record
@@ -596,7 +639,7 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 		// This message is stored on a single record, write the record content to the appropriate file
 		else
 		{
-			if (SMSWriteMessageHeader(Pointer_File, Pointer_SMS_Record) != 0) return -1;
+			if (SMSWriteOutputMessageInformation(Pointer_File, Pointer_SMS_Record) != 0) return -1;
 			fprintf(Pointer_File, "%s\n\n", Pointer_SMS_Record->String_Text);
 		}
 	}
