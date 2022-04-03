@@ -39,6 +39,12 @@ typedef struct
 	int Record_ID; //!< The record unique identifier (it is made of the two first bytes of the record field).
 	int Records_Count; //!< The amount of records needed to store the whole message.
 	int Record_Number; //!< The number of this record among all needed records (starts from one).
+	int Date_Year;
+	int Date_Month;
+	int Date_Day;
+	int Time_Hour;
+	int Time_Minutes;
+	int Time_Seconds;
 } TSMSRecord;
 
 //-------------------------------------------------------------------------------------------------
@@ -292,6 +298,56 @@ static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, TS
 	return Text_Payload_Offset;
 }
 
+/** TODO */
+static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
+{
+	int Phone_Number_Length, Is_Least_Significant_Nibble_Selected = 1, i, Text_Payload_Offset = 0, Is_Stored_On_Multiple_Records;
+	char Digit, *Pointer_String_Phone_Number;
+	unsigned char Byte;
+
+	// Bypass currently unknown bytes
+	Pointer_Message_Buffer += 19;
+	Text_Payload_Offset += 19;
+
+	// Extract message reception date and time
+	// Year
+	Byte = Pointer_Message_Buffer[0];
+	Pointer_SMS_Record->Date_Year = 2000 + ((Byte & 0x0F) * 10) + (Byte >> 4);
+	// Month
+	Byte = Pointer_Message_Buffer[1];
+	Pointer_SMS_Record->Date_Month = ((Byte & 0x0F) * 10) + (Byte >> 4);
+	// Day
+	Byte = Pointer_Message_Buffer[2];
+	Pointer_SMS_Record->Date_Day = ((Byte & 0x0F) * 10) + (Byte >> 4);
+	// Hour
+	Byte = Pointer_Message_Buffer[3];
+	Pointer_SMS_Record->Time_Hour = ((Byte & 0x0F) * 10) + (Byte >> 4);
+	// Minutes
+	Byte = Pointer_Message_Buffer[4];
+	Pointer_SMS_Record->Time_Minutes = ((Byte & 0x0F) * 10) + (Byte >> 4);
+	// Seconds
+	Byte = Pointer_Message_Buffer[5];
+	Pointer_SMS_Record->Time_Seconds = ((Byte & 0x0F) * 10) + (Byte >> 4);
+	Pointer_Message_Buffer += 6;
+	Text_Payload_Offset += 6;
+	
+	printf("y=%d m=%02d d=%02d h=%02d m=%02d s=%02d\n", Pointer_SMS_Record->Date_Year, Pointer_SMS_Record->Date_Month, Pointer_SMS_Record->Date_Day, Pointer_SMS_Record->Time_Hour, Pointer_SMS_Record->Time_Minutes, Pointer_SMS_Record->Time_Seconds);
+	
+	// Bypass currently unknown byte
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Retrieve the text size in bytes
+	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+	
+	// TEST
+	*Pointer_Is_Wide_Character_Encoding = 0;
+
+	return Text_Payload_Offset;
+}
+
 /** TODO
  * @return -3 if the record is empty,
  * @return -2 if the SMS format is not supported yet,
@@ -358,7 +414,23 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 		// Tell that record contains data
 		Pointer_SMS_Record->Is_Data_Present = 1;
 	}
-	else return -2; // Unsupported message format (for now)
+	else
+	{
+		// Retrieve all useful information from the message header
+		Text_Payload_Offset = SMSDecodeLongHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
+		if (Text_Payload_Offset < 0) return -1;
+		
+		// TODO
+		
+		// Extract the text content with the custom character set for extended ASCII
+		SMSUncompress7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, String_Temporary);
+
+		// Convert custom character set to UTF-8
+		SMSConvert7BitExtendedASCII(String_Temporary, Pointer_SMS_Record->String_Text);
+		
+		// Tell that record contains data
+		Pointer_SMS_Record->Is_Data_Present = 1;
+	}
 
 	return 0;
 }
