@@ -338,7 +338,14 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 		if (Text_Payload_Offset < 0) return -1;
 
 		// Decode text
-		if (Is_Wide_Character_Encoding) SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_SMS_Record->String_Text);
+		if (Is_Wide_Character_Encoding)
+		{
+			// Quick fix for multi records messages text string trailing characters (TODO find a better solution)
+			if ((Pointer_SMS_Record->Records_Count > 1) && (Text_Payload_Bytes_Count > 6)) Text_Payload_Bytes_Count -= 6;
+
+			// Convert UTF-16 to UTF-8
+			SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_SMS_Record->String_Text);
+		}
 		else
 		{
 			// Extract the text content with the custom character set for extended ASCII
