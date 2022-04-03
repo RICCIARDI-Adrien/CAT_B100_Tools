@@ -39,7 +39,7 @@ typedef struct
 //-------------------------------------------------------------------------------------------------
 /** Uncompress 7-bit encoded SMS text.
  * @param Pointer_Compressed_Text The compressed text received from the phone.
- * @param Compressed_Bytes_Count The uncompressed text length.
+ * @param Bytes_Count The uncompressed text length.
  * @param Pointer_String_Uncompressed_Text On output, contain the uncompressed text converted to 8-bit ASCII. Make sure the provided string is large enough.
  */
 static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int Bytes_Count, char *Pointer_String_Uncompressed_Text)
@@ -47,8 +47,6 @@ static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int By
 	int i, Index = 7;
 	unsigned char Byte, Mask = 0x7F, Leftover_Bits = 0;
 	char *Pointer_String_Uncompressed_Text_Initial_Value = Pointer_String_Uncompressed_Text;
-
-	printf("[SMSDecode7BitText] Compressed_Bytes_Count = '%d'\n", Bytes_Count);
 	
 	// Go through all compressed bytes, stopping in case the message is wrong and does not include the terminating character
 	for (i = 0; i < Bytes_Count; i++)
@@ -61,8 +59,7 @@ static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int By
 		Byte |= Leftover_Bits;
 		// Make sure bit 7 is not set
 		Byte &= 0x7F;
-
-		// TODO
+		// Is the end of the text string reached ?
 		if (Byte == 0) break;
 
 		// Keep the next byte least significant bits
@@ -73,17 +70,14 @@ static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int By
 		Pointer_Compressed_Text++;
 		*Pointer_String_Uncompressed_Text = (char) Byte;
 		Pointer_String_Uncompressed_Text++;
-		
-		printf("[SMSDecode7BitText] char = '%c', 0x%02X\n", Byte, Byte);
 
 		// 7 bytes encode 8 characters, so reset the state machine when 7 input bytes have been processed
 		if (Index <= 1)
 		{
 			// When 7 input bytes have been processed, a whole character is still contained in the leftover bits, handle it here
 			Byte = Leftover_Bits & 0x7F;
-			if (Byte == 0) break;
+			if (Byte == 0) break; // Is the end of the text string reached ?
 			*Pointer_String_Uncompressed_Text = Byte;
-			printf("[SMSDecode7BitText] char = '%c', 0x%02X\n", Leftover_Bits & 0x7F, Leftover_Bits & 0x7F);
 			Pointer_String_Uncompressed_Text++;
 
 			Index = 7;
@@ -101,9 +95,51 @@ static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int By
 	Pointer_String_Uncompressed_Text_Initial_Value[Bytes_Count] = 0;
 }
 
-static void SMSDecode7BitText(char *Pointer_String_Uncompressed_Text, int Bytes_Count, char *Pointer_String_Decoded_Text)
+/** Replace custom character set character values by standard ones and convert the text to UTF-8.
+ * @param Pointer_String_Custom_Character_Set_Text The decoded text from the phone. This string will be modified by this function (special characters value will be changed, but string length will remain the same).
+ * @param Pointer_String_Converted_Text On output, contain the text converted to UTF-8. Make sure the provided string is large enough.
+ */
+static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Set_Text, char *Pointer_String_Converted_Text)
 {
-	SMSUncompress7BitText(Pointer_String_Uncompressed_Text, Bytes_Count, Pointer_String_Decoded_Text);
+	static unsigned char Extended_ASCII_Conversion_Table[256] = // Look-up table that converts custom CAT extended characters to Windows CP1252 extended characters
+	{
+		0x00, 0x00, 0x00, 0x00, 0xE8, 0xE9, 0xF9, 0x00, 0x00, 0xC7, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC6, 0xE6, 0x00, 0xC9,
+		 ' ',  '!',  '"',  '#',  '$',  '%',  '&', '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
+		 '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  ':',  ';',  '<',  '=',  '>',  '?',
+		 '@',  'A',  'B',  'C',  'D',  'E',  'F',  'G',  'H',  'I',  'J',  'K',  'L',  'M',  'N',  'O',
+		 'P',  'Q',  'R',  'S',  'T',  'U',  'V',  'W',  'X',  'Y',  'Z',  '[', '\\',  ']',  '^',  '_',
+		 '`',  'a',  'b',  'c',  'd',  'e',  'f',  'g',  'h',  'i',  'j',  'k',  'l',  'm',  'n',  'o',
+		 'p',  'q',  'r',  's',  't',  'u',  'v',  'w',  'x',  'y',  'z',  '{',  '|',  '}',  '~', 0xE0
+	};
+	unsigned char Byte;
+	char *Pointer_String_Temporary;
+	iconv_t Conversion_Descriptor;
+	size_t Source_String_Remaining_Bytes, Destination_String_Available_Bytes;
+
+	// Process each character through the look-up table
+	Pointer_String_Temporary = Pointer_String_Custom_Character_Set_Text;
+	while (*Pointer_String_Temporary != 0)
+	{
+		Byte = *Pointer_String_Temporary;
+		*Pointer_String_Temporary = Extended_ASCII_Conversion_Table[Byte]; // Use a non-signed variable as array index to avoid a compiler warning
+		Pointer_String_Temporary++;
+	}
+
+	// Convert text to UTF-8
+	// Configure character sets
+	Conversion_Descriptor = iconv_open("UTF-8", "WINDOWS-1252");
+	if (Conversion_Descriptor == (iconv_t) -1)
+	{
+		printf("Error : failed to create the character set conversion descriptor, skipping text conversion to UTF-8.\n");
+		return;
+	}
+
+	// Do conversion
+	Source_String_Remaining_Bytes = strlen(Pointer_String_Custom_Character_Set_Text);
+	Destination_String_Available_Bytes = SMS_TEXT_STRING_MAXIMUM_SIZE;
+	if (iconv(Conversion_Descriptor, &Pointer_String_Custom_Character_Set_Text, &Source_String_Remaining_Bytes, &Pointer_String_Converted_Text, &Destination_String_Available_Bytes) == (size_t) -1) printf("Error : text conversion to UTF-8 failed.\n");
+	iconv_close(Conversion_Descriptor);
 }
 
 /** Convert an UTF-16 big endian text to UTF-8.
@@ -279,7 +315,14 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 
 		// Decode text
 		if (Is_Wide_Character_Encoding) SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_String_Text);
-		else SMSDecode7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_String_Text);
+		else
+		{
+			// Extract the text content with the custom character set for extended ASCII
+			SMSUncompress7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, String_Temporary);
+
+			// Convert custom character set to UTF-8
+			SMSConvert7BitExtendedASCII(String_Temporary, Pointer_String_Text);
+		}
 	}
 	else return -2; // Unsupported message format (for now)
 
