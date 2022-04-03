@@ -183,7 +183,7 @@ static void SMSDecode16BitText(unsigned char *Pointer_Text, int Bytes_Count, cha
 
 /** TODO
  * @param Pointer_Message_Buffer The raw message, it must be of type SMS_MESSAGE_STORAGE_LOCATION_SENT or SMS_MESSAGE_STORAGE_LOCATION_DRAFT.
- * @param Pointer_SMS_Record On output, fill the phone number if it is present in the message (if no phone number is present the string will be set to empty). Also fill the multiple records boolean and record ID if any.
+ * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
  * @return A positive number indicating the offset of the text payload in the message buffer.
  */
 static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
@@ -298,7 +298,11 @@ static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, TS
 	return Text_Payload_Offset;
 }
 
-/** TODO */
+/** TODO
+ * @param Pointer_Message_Buffer The raw message, it must be of type SMS_MESSAGE_STORAGE_LOCATION_INBOX.
+ * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
+ * @return A positive number indicating the offset of the text payload in the message buffer.
+ */
 static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
 {
 	int Phone_Number_Length, Is_Least_Significant_Nibble_Selected = 1, i, Text_Payload_Offset = 0, Is_Stored_On_Multiple_Records;
@@ -306,8 +310,15 @@ static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSM
 	unsigned char Byte;
 
 	// Bypass currently unknown bytes
-	Pointer_Message_Buffer += 9;
-	Text_Payload_Offset += 9;
+	Pointer_Message_Buffer += 8;
+	Text_Payload_Offset += 8;
+
+	// Is this message stored on multiple records ?
+	Byte = *Pointer_Message_Buffer;
+	if (Byte & 0x40) Is_Stored_On_Multiple_Records = 1;
+	else Is_Stored_On_Multiple_Records = 0;
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
 
 	// Retrieve phone number
 	Pointer_String_Phone_Number = Pointer_SMS_Record->String_Phone_Number;
@@ -392,6 +403,27 @@ static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSM
 	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
+
+	// Retrieve record ID if any
+	if (Is_Stored_On_Multiple_Records)
+	{
+		// Bypass the initial 0x05 byte, which might represent the record ID field size in bytes, and the following unknown byte
+		Pointer_Message_Buffer += 2;
+		Text_Payload_Offset += 2;
+
+		// Decode the record 4 bytes
+		Pointer_SMS_Record->Record_ID = (Pointer_Message_Buffer[0] << 8) | Pointer_Message_Buffer[1];
+		Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[2];
+		Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[3];
+		Pointer_Message_Buffer += 4;
+		Text_Payload_Offset += 4;
+	}
+	// Make sure values are coherent if there is only a single record (in this case there is not record 4 bytes field
+	else
+	{
+		Pointer_SMS_Record->Records_Count = 1;
+		Pointer_SMS_Record->Record_Number = 1; // Record numbers start from 1
+	}
 
 	return Text_Payload_Offset;
 }
