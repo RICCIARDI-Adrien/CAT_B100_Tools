@@ -2,6 +2,7 @@
  * Retrieve data from CAT B100 phone through the serial port interface.
  * @author Adrien RICCIARDI
  */
+#include <File_System.h>
 #include <Serial_Port.h>
 #include <SMS.h>
 #include <stdio.h>
@@ -23,6 +24,13 @@ int main(int argc, char *argv[])
 	if (SerialPortOpen(Pointer_String_Serial_Port_Device, 115200, SERIAL_PORT_PARITY_NONE, &Serial_Port_ID) != 0)
 	{
 		printf("Error : failed to open serial port \"%s\".\n", Pointer_String_Serial_Port_Device);
+		goto Exit;
+	}
+
+	// Try to create the destination directory
+	if (FileSystemCreateDirectory("Output") != 0)
+	{
+		printf("Error : could not create the output directory.\n");
 		goto Exit;
 	}
 
