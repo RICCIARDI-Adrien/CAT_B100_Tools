@@ -435,6 +435,42 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	return 0;
 }
 
+/** Write the appropriate message header to the output file according to the message storage location.
+ * @param Pointer_Output_File The output file to write to.
+ * @param Pointer_SMS_Record The message information.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
+static int SMSWriteMessageHeader(FILE *Pointer_Output_File, TSMSRecord *Pointer_SMS_Record)
+{
+	char String_Temporary[256], String_Temporary_2[32];
+
+	// Write phone number
+	if (Pointer_SMS_Record->Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_INBOX) strcpy(String_Temporary, "From : ");
+	else strcpy(String_Temporary, "To : ");
+	strcat(String_Temporary, Pointer_SMS_Record->String_Phone_Number);
+	strcat(String_Temporary, "\n");
+
+	// Write date if any
+	if (Pointer_SMS_Record->Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_INBOX)
+	{
+		sprintf(String_Temporary_2, "Date : %04d-%02d-%02d %02d:%02d:%02d\n", Pointer_SMS_Record->Date_Year, Pointer_SMS_Record->Date_Month, Pointer_SMS_Record->Date_Day, Pointer_SMS_Record->Time_Hour, Pointer_SMS_Record->Time_Minutes, Pointer_SMS_Record->Time_Seconds);
+		strcat(String_Temporary, String_Temporary_2);
+	}
+
+	// Message text
+	strcat(String_Temporary, "Text : ");
+
+	// Try to write to file
+	if (fprintf(Pointer_Output_File, "%s", String_Temporary) <= 0)
+	{
+		printf("Error : could not write to SMS output file (%s).\n", strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
 //-------------------------------------------------------------------------------------------------
 // Public functions
 //-------------------------------------------------------------------------------------------------
@@ -532,7 +568,8 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 			if (Pointer_SMS_Record->Record_Number > 1) continue;
 
 			// This is the initial record, write its content to the appropriate file
-			fprintf(Pointer_File, "From : %s\nText : %s", Pointer_SMS_Record->String_Phone_Number, Pointer_SMS_Record->String_Text);
+			if (SMSWriteMessageHeader(Pointer_File, Pointer_SMS_Record) != 0) return -1;
+			fprintf(Pointer_File, "%s", Pointer_SMS_Record->String_Text);
 
 			// Search for the next record
 			Current_Record_Number = 2; // Start searching from record 2 as record 1 has already been written to the file
@@ -557,7 +594,11 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 			}
 		}
 		// This message is stored on a single record, write the record content to the appropriate file
-		else fprintf(Pointer_File, "From : %s\nText : %s\n\n", Pointer_SMS_Record->String_Phone_Number, Pointer_SMS_Record->String_Text);
+		else
+		{
+			if (SMSWriteMessageHeader(Pointer_File, Pointer_SMS_Record) != 0) return -1;
+			fprintf(Pointer_File, "%s\n\n", Pointer_SMS_Record->String_Text);
+		}
 	}
 
 	// Everything went fine
