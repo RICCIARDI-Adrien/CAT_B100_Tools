@@ -27,15 +27,12 @@ int main(int argc, char *argv[])
 		goto Exit;
 	}
 
-	// Try to create the destination directory
-	if (FileSystemCreateDirectory("Output") != 0)
-	{
-		printf("Error : could not create the output directory.\n");
-		goto Exit;
-	}
+	// Try to create all destination directories
+	if (FileSystemCreateDirectory("Output") != 0) return -1;
+	if (FileSystemCreateDirectory("Output/SMS") != 0) return -1;
 
 	// TEST
-	if (SMSDownload(Serial_Port_ID) != 0)
+	if (SMSDownloadAll(Serial_Port_ID) != 0)
 	{
 		printf("Error : failed to download SMS.\n");
 		goto Exit;
