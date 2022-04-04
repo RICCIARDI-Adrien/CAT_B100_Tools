@@ -17,7 +17,12 @@ int main(int argc, char *argv[])
 	TSerialPortID Serial_Port_ID = SERIAL_PORT_INVALID_ID;
 	int Return_Value = EXIT_FAILURE;
 
-	// TEST
+	// Check parameters
+	if (argc != 2)
+	{
+		printf("Usage : %s Serial_Port\n", argv[0]);
+		return EXIT_FAILURE;
+	}
 	Pointer_String_Serial_Port_Device = argv[1];
 
 	// Try to open serial port
