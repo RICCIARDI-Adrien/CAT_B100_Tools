@@ -3,10 +3,12 @@
  * @author Adrien RICCIARDI
  */
 #include <assert.h>
+#include <AT_Command.h>
 #include <File_Manager.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <Utility.h>
 
 //-------------------------------------------------------------------------------------------------
 // Public functions
@@ -77,4 +79,58 @@ void FileManagerListDisplay(TFileManagerList *Pointer_List)
 		printf("Name = \"%s\", is directory = %d.\n", Pointer_Item->String_File_Name, Pointer_Item->Is_Directory);
 		Pointer_Item = Pointer_Item->Pointer_Next_Item;
 	}
+}
+
+int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List)
+{
+	unsigned char Buffer[512];
+	char String_Temporary[sizeof(Buffer) * 2]; // Twice more characters are needed as bytes are converted to hexadecimal characters
+	int Size;
+
+	// Allow access to file manager
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=3") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		printf("Error : failed to send the AT command that enables the file manager.\n");
+		return -1;
+	}
+
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+EFSC=?") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
+	printf("+EFSL : %s\n", String_Temporary);
+
+	// Convert the provided path to the character encoding the phone is expecting
+	Size = UtilityConvertString(Pointer_String_Absolute_Path, Buffer, UTILITY_CHARACTER_SET_UTF8, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, 0, sizeof(Buffer));
+	if (Size == -1)
+	{
+		printf("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Path);
+		return -1;
+	}
+
+	// Send the command
+	strcpy(String_Temporary, "AT+EFSL=\"");
+	ATCommandConvertBinaryToHexadecimal(Buffer, Size, &String_Temporary[9]); // Concatenate the converted path right after the command
+	strcat(String_Temporary, "\"");
+	printf("cmd = \"%s\"\n", String_Temporary);
+	if (ATCommandSendCommand(Serial_Port_ID, String_Temporary) != 0) return -1;
+
+	// Wait for all file names to be received
+	do
+	{
+		// Wait for the information string
+		if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
+		printf("+EFSL : %s\n", String_Temporary);
+	} while (strcmp(String_Temporary, "OK") != 0);
+
+	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		printf("Error : failed to send the AT command that disables the file manager.\n");
+		return -1;
+	}
+
+	return 0;
 }

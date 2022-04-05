@@ -3,13 +3,14 @@
  * @author Adrien RICCIARDI
  */
 #include <AT_Command.h>
+#include <stdio.h>
 #include <string.h>
 
 //-------------------------------------------------------------------------------------------------
 // Private functions
 //-------------------------------------------------------------------------------------------------
 /** TODO */
-int ATCommandGetHexadecimalNibbleBinaryValue(char Hexadecimal_Nibble)
+static int ATCommandGetHexadecimalNibbleBinaryValue(char Hexadecimal_Nibble)
 {
 	// Convert any hexadecimal letters to uppercase
 	if ((Hexadecimal_Nibble >= 'a') && (Hexadecimal_Nibble <= 'f')) Hexadecimal_Nibble -= 32;
@@ -107,4 +108,21 @@ int ATCommandConvertHexadecimalToBinary(char *Pointer_String_Hexadecimal, unsign
 	if (Converted_Data_Size >= Output_Buffer_Size) return -1;
 
 	return (int) Converted_Data_Size;
+}
+
+void ATCommandConvertBinaryToHexadecimal(unsigned char *Pointer_Buffer, unsigned int Buffer_Size, char *Pointer_String_Hexadecimal)
+{
+	char String_Temporary[4];
+
+	// Make sure the string is empty
+	*Pointer_String_Hexadecimal = 0;
+
+	// Convert one byte at a time
+	while (Buffer_Size > 0)
+	{
+		sprintf(String_Temporary, "%02X", *Pointer_Buffer);
+		strcat(Pointer_String_Hexadecimal, String_Temporary);
+		Pointer_Buffer++;
+		Buffer_Size--;
+	}
 }

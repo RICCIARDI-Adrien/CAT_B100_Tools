@@ -35,4 +35,7 @@ int ATCommandSendCommand(TSerialPortID Serial_Port_ID, char *Pointer_String_Comm
  */
 int ATCommandConvertHexadecimalToBinary(char *Pointer_String_Hexadecimal, unsigned char *Pointer_Output_Buffer, unsigned int Output_Buffer_Size);
 
+/** TODO */
+void ATCommandConvertBinaryToHexadecimal(unsigned char *Pointer_Buffer, unsigned int Buffer_Size, char *Pointer_String_Hexadecimal);
+
 #endif

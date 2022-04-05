@@ -38,11 +38,23 @@ int main(int argc, char *argv[])
 	if (UtilityCreateDirectory("Output/SMS") != 0) return -1;
 
 	// TEST
-	if (SMSDownloadAll(Serial_Port_ID) != 0)
+	/*if (SMSDownloadAll(Serial_Port_ID) != 0)
 	{
 		printf("Error : failed to download SMS.\n");
 		goto Exit;
+	}*/
+
+	// TEST
+	{
+		TFileManagerList List;
+
+		if (FileManagerListDirectory(Serial_Port_ID, "E:", &List) != 0)
+		{
+			printf("Error : file manager.\n");
+			goto Exit;
+		}
 	}
+
 
 	// Everything went fine
 	Return_Value = EXIT_SUCCESS;

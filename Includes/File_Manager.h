@@ -5,6 +5,8 @@
 #ifndef H_FILE_MANAGER_H
 #define H_FILE_MANAGER_H
 
+#include <Serial_Port.h>
+
 //-------------------------------------------------------------------------------------------------
 // Types
 //-------------------------------------------------------------------------------------------------
@@ -39,6 +41,6 @@ void FileManagerListDisplay(TFileManagerList *Pointer_List);
 /** TODO */
 unsigned int FileManagerListDrives(void); // int for error ?
 
-int FileManagerListDirectory(char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List);
+int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List);
 
 #endif
