@@ -2,6 +2,7 @@
  * Retrieve data from CAT B100 phone through the serial port interface.
  * @author Adrien RICCIARDI
  */
+#include <File_Manager.h>
 #include <File_System.h>
 #include <Serial_Port.h>
 #include <SMS.h>
@@ -18,7 +19,7 @@ int main(int argc, char *argv[])
 	int Return_Value = EXIT_FAILURE;
 
 	// Check parameters
-	if (argc != 2)
+	/*if (argc != 2)
 	{
 		printf("Usage : %s Serial_Port\n", argv[0]);
 		return EXIT_FAILURE;
@@ -41,6 +42,31 @@ int main(int argc, char *argv[])
 	{
 		printf("Error : failed to download SMS.\n");
 		goto Exit;
+	}*/
+	
+	// TEST
+	{
+		TFileManagerList List;
+		
+		FileManagerListInitialize(&List);
+		printf("--- empty list\n");
+		FileManagerListDisplay(&List);
+		
+		FileManagerListAddFile(&List, "The first file", 0);
+		printf("--- adding first file\n");
+		FileManagerListDisplay(&List);
+		
+		FileManagerListAddFile(&List, "this is the 2nd file", 0);
+		printf("--- adding second file\n");
+		FileManagerListDisplay(&List);
+		
+		FileManagerListAddFile(&List, "File #3", 1);
+		printf("--- adding third file\n");
+		FileManagerListDisplay(&List);
+		
+		printf("--- clearing list\n");
+		FileManagerListClear(&List);
+		FileManagerListDisplay(&List);
 	}
 
 	// Everything went fine
