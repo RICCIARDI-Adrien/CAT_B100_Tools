@@ -4,10 +4,10 @@
  */
 #include <AT_Command.h>
 #include <errno.h>
-#include <iconv.h>
 #include <SMS.h>
 #include <stdio.h>
 #include <string.h>
+#include <Utility.h>
 
 //-------------------------------------------------------------------------------------------------
 // Private constants
@@ -127,8 +127,6 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 	};
 	unsigned char Byte;
 	char *Pointer_String_Temporary;
-	iconv_t Conversion_Descriptor;
-	size_t Source_String_Remaining_Bytes, Destination_String_Available_Bytes;
 
 	// Process each character through the look-up table
 	Pointer_String_Temporary = Pointer_String_Custom_Character_Set_Text;
@@ -140,45 +138,7 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 	}
 
 	// Convert text to UTF-8
-	// Configure character sets
-	Conversion_Descriptor = iconv_open("UTF-8", "WINDOWS-1252");
-	if (Conversion_Descriptor == (iconv_t) -1)
-	{
-		printf("Error : failed to create the character set conversion descriptor, skipping text conversion to UTF-8.\n");
-		return;
-	}
-
-	// Do conversion
-	Source_String_Remaining_Bytes = strlen(Pointer_String_Custom_Character_Set_Text);
-	Destination_String_Available_Bytes = SMS_TEXT_STRING_MAXIMUM_SIZE;
-	if (iconv(Conversion_Descriptor, &Pointer_String_Custom_Character_Set_Text, &Source_String_Remaining_Bytes, &Pointer_String_Converted_Text, &Destination_String_Available_Bytes) == (size_t) -1) printf("Error : text conversion to UTF-8 failed.\n");
-	iconv_close(Conversion_Descriptor);
-}
-
-/** Convert an UTF-16 big endian text to UTF-8.
- * @param Pointer_Text The raw text to decode.
- * @param Bytes_Count The raw text size in bytes.
- * @param Pointer_String_Decoded_Text On output, contain the text converted to UTF-8.
- */
-static void SMSDecode16BitText(unsigned char *Pointer_Text, int Bytes_Count, char *Pointer_String_Decoded_Text)
-{
-	iconv_t Conversion_Descriptor;
-	size_t Source_String_Remaining_Bytes, Destination_String_Available_Bytes;
-
-	// Convert it to UTF-8
-	// Configure character sets
-	Conversion_Descriptor = iconv_open("UTF-8", "UTF-16BE");
-	if (Conversion_Descriptor == (iconv_t) -1)
-	{
-		printf("Error : failed to create the character set conversion descriptor, skipping text conversion to UTF-8.\n");
-		return;
-	}
-
-	// Do conversion
-	Source_String_Remaining_Bytes = Bytes_Count;
-	Destination_String_Available_Bytes = SMS_TEXT_STRING_MAXIMUM_SIZE;
-	if (iconv(Conversion_Descriptor, (char **) &Pointer_Text, &Source_String_Remaining_Bytes, &Pointer_String_Decoded_Text, &Destination_String_Available_Bytes) == (size_t) -1) printf("Error : text conversion to UTF-8 failed.\n");
-	iconv_close(Conversion_Descriptor);
+	UtilityConvertStringToUTF8(Pointer_String_Custom_Character_Set_Text, Pointer_String_Converted_Text, UTILITY_CHARACTER_SET_WINDOWS_1252, 0, SMS_TEXT_STRING_MAXIMUM_SIZE);
 }
 
 /** TODO
@@ -493,7 +453,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 		if ((Pointer_SMS_Record->Records_Count > 1) && (Text_Payload_Bytes_Count > 6)) Text_Payload_Bytes_Count -= 6;
 
 		// Convert UTF-16 to UTF-8
-		SMSDecode16BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, Pointer_SMS_Record->String_Text);
+		if (UtilityConvertStringToUTF8(&Temporary_Buffer[Text_Payload_Offset], Pointer_SMS_Record->String_Text, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, Text_Payload_Bytes_Count, sizeof(Pointer_SMS_Record->String_Text)) != 0) return -1;
 	}
 	else
 	{
