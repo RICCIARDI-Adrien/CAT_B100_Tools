@@ -1,19 +1,19 @@
-/** @file File_System.c
- * See File_System.h for description.
+/** @file Utility.c
+ * See Utility.h for description.
  * @author Adrien RICCIARDI
  */
-#include <File_System.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <Utility.h>
 
 //-------------------------------------------------------------------------------------------------
 // Public functions
 //-------------------------------------------------------------------------------------------------
-int FileSystemCreateDirectory(char *Pointer_Directory_Name)
+int UtilityCreateDirectory(char *Pointer_Directory_Name)
 {
 	struct stat Status;
 

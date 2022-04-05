@@ -1,9 +1,9 @@
-/** @file File_System.h
- * Various utilities to interact with the file system.
+/** @file Utility.h
+ * Various utilities used by multiple parts of the program.
  * @author Adrien RICCIARDI
  */
-#ifndef H_FILE_SYSTEM_H
-#define H_FILE_SYSTEM_H
+#ifndef H_UTILITY_H
+#define H_UTILITY_H
 
 //-------------------------------------------------------------------------------------------------
 // Functions
@@ -14,6 +14,6 @@
  * @return 0 on success.
  * @note This function returns with success if the directory already exists.
  */
-int FileSystemCreateDirectory(char *Pointer_Directory_Name);
+int UtilityCreateDirectory(char *Pointer_Directory_Name);
 
 #endif
