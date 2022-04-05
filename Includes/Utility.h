@@ -14,7 +14,9 @@
 typedef enum
 {
 	UTILITY_CHARACTER_SET_WINDOWS_1252,
-	UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN
+	UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN,
+	UTILITY_CHARACTER_SET_UTF8,
+	UTILITY_CHARACTER_SETS_COUNT
 } TUtilityCharacterSet;
 
 //-------------------------------------------------------------------------------------------------
@@ -28,15 +30,16 @@ typedef enum
  */
 int UtilityCreateDirectory(char *Pointer_Directory_Name);
 
-/** Convert a non-ASCII string to UTF-8.
+/** Convert a string from a character set to another.
  * @param Pointer_String_Source The string to convert.
- * @param Pointer_Converted_String On output, contain the string converted to UTF-8.
+ * @param Pointer_String_Destination On output, contain the converted string.
  * @param Source_Character_Set The source character set to convert from.
+ * @param Destination_Character_Set The destination character set to convert to.
  * @param Source_String_Size The source string size in bytes (not in characters). If set to 0, the string length will be automatically determined, make sure that the string does not contain NULL bytes in the middle of the data.
  * @param Destination_String_Size The maximum size in bytes of the output string.
  * @return -1 if an error occurs,
- * @return 0 on success.
+ * @return A positive number on success, it indicates the destination string size in bytes.
  */
-int UtilityConvertStringToUTF8(void *Pointer_String_Source, char *Pointer_Converted_String, TUtilityCharacterSet Source_Character_Set, size_t Source_String_Size, size_t Destination_String_Size);
+int UtilityConvertString(void *Pointer_String_Source, void *Pointer_String_Destination, TUtilityCharacterSet Source_Character_Set, TUtilityCharacterSet Destination_Character_Set, size_t Source_String_Size, size_t Destination_String_Size);
 
 #endif

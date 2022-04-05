@@ -138,7 +138,7 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 	}
 
 	// Convert text to UTF-8
-	UtilityConvertStringToUTF8(Pointer_String_Custom_Character_Set_Text, Pointer_String_Converted_Text, UTILITY_CHARACTER_SET_WINDOWS_1252, 0, SMS_TEXT_STRING_MAXIMUM_SIZE);
+	UtilityConvertString(Pointer_String_Custom_Character_Set_Text, Pointer_String_Converted_Text, UTILITY_CHARACTER_SET_WINDOWS_1252, UTILITY_CHARACTER_SET_UTF8, 0, SMS_TEXT_STRING_MAXIMUM_SIZE);
 }
 
 /** TODO
@@ -453,7 +453,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 		if ((Pointer_SMS_Record->Records_Count > 1) && (Text_Payload_Bytes_Count > 6)) Text_Payload_Bytes_Count -= 6;
 
 		// Convert UTF-16 to UTF-8
-		if (UtilityConvertStringToUTF8(&Temporary_Buffer[Text_Payload_Offset], Pointer_SMS_Record->String_Text, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, Text_Payload_Bytes_Count, sizeof(Pointer_SMS_Record->String_Text)) != 0) return -1;
+		if (UtilityConvertString(&Temporary_Buffer[Text_Payload_Offset], Pointer_SMS_Record->String_Text, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Text_Payload_Bytes_Count, sizeof(Pointer_SMS_Record->String_Text)) < 0) return -1;
 	}
 	else
 	{
