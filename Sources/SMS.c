@@ -116,7 +116,7 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 {
 	static unsigned char Extended_ASCII_Conversion_Table[256] = // Look-up table that converts custom CAT extended characters to Windows CP1252 extended characters
 	{
-		0x00, 0x00, 0x00, 0x00, 0xE8, 0xE9, 0xF9, 0x00, 0x00, 0xC7, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0xE8, 0xE9, 0xF9, 0x00, 0x00, 0xC7, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC6, 0xE6, 0x00, 0xC9,
 		 ' ',  '!',  '"',  '#',  '$',  '%',  '&', '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
 		 '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  ':',  ';',  '<',  '=',  '>',  '?',
@@ -525,8 +525,26 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 	for (i = 1; i <= SMS_RECORDS_MAXIMUM_COUNT; i++)
 	{
 		printf("\033[32mSMS record number = %d\033[0m\n", i); // TEST
-		SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Records[i - 1]); // Record array is zero-based
-		printf("\n"); // TEST
+		if (SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Records[i - 1]) == 0) // Record array is zero-based
+		{
+			// TEST
+			printf("Phone number : %s\n", SMS_Records[i - 1].String_Phone_Number);
+			printf("Message storage location : ");
+			switch (SMS_Records[i - 1].Message_Storage_Location)
+			{
+				case SMS_MESSAGE_STORAGE_LOCATION_DRAFT:
+					printf("draft\n");
+					break;
+				case SMS_MESSAGE_STORAGE_LOCATION_INBOX:
+					printf("inbox\n");
+					break;
+				case SMS_MESSAGE_STORAGE_LOCATION_SENT:
+					printf("sent\n");
+					break;
+			}
+			printf("Message content : %s\n", SMS_Records[i - 1].String_Text);
+		}
+		printf("\n");
 	}
 
 	// Create all needed files
