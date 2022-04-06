@@ -18,6 +18,7 @@
 typedef enum
 {
 	MAIN_COMMAND_LIST_DIRECTORY,
+	MAIN_COMMAND_GET_ALL_SMS,
 	MAIN_COMMANDS_COUNT
 } TMainCommand;
 
@@ -31,7 +32,8 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 {
 	printf("Usage : %s Serial_Port Command [Parameter]\n"
 		"Available commands :\n"
-		"  list-directory <absolute path>\n", Pointer_String_Program_Name);
+		"  list-directory <absolute path>\n"
+		"  get-all-sms\n", Pointer_String_Program_Name);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -56,6 +58,7 @@ int main(int argc, char *argv[])
 	// Parse command and parameters
 	for (i = 2; i < argc; i++)
 	{
+		// MAIN_COMMAND_LIST_DIRECTORY
 		if (strcmp(argv[i], "list-directory") == 0)
 		{
 			// Retrieve the mandatory argument
@@ -69,6 +72,12 @@ int main(int argc, char *argv[])
 
 			Command = MAIN_COMMAND_LIST_DIRECTORY;
 			Pointer_String_Argument_1 = argv[i];
+			break;
+		}
+		// MAIN_COMMAND_GET_ALL_SMS
+		else if (strcmp(argv[i], "get-all-sms") == 0)
+		{
+			Command = MAIN_COMMAND_GET_ALL_SMS;
 			break;
 		}
 	}
@@ -106,17 +115,19 @@ int main(int argc, char *argv[])
 			FileManagerListDisplay(&List);
 			break;
 
+		case MAIN_COMMAND_GET_ALL_SMS:
+			if (SMSDownloadAll(Serial_Port_ID) != 0)
+			{
+				printf("Error : failed to download SMS.\n");
+				goto Exit;
+			}
+			printf("All SMS were successfully retrieved.\n");
+			break;
+
 		default:
 			printf("Error : the command %d implementation is missing.\n", Command);
 			break;
 	}
-
-	// TEST
-	/*if (SMSDownloadAll(Serial_Port_ID) != 0)
-	{
-		printf("Error : failed to download SMS.\n");
-		goto Exit;
-	}*/
 
 	// Everything went fine
 	Return_Value = EXIT_SUCCESS;

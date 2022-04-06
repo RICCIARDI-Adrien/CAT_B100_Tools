@@ -404,7 +404,11 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 
 	// Send the command
 	sprintf(String_Command, "AT+EMGR=%d", SMS_Number);
-	if (ATCommandSendCommand(Serial_Port_ID, String_Command) != 0) return -1;
+	if (ATCommandSendCommand(Serial_Port_ID, String_Command) != 0)
+	{
+		printf("Error : failed to send the AT command to read SMS record %d.\n", SMS_Number);
+		return -1;
+	}
 
 	// Wait for the information string
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
@@ -512,7 +516,7 @@ static int SMSWriteOutputMessageInformation(FILE *Pointer_Output_File, TSMSRecor
 int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 {
 	static TSMSRecord SMS_Records[SMS_RECORDS_MAXIMUM_COUNT];
-	int i, Result, Return_Value = -1, j, Current_Record_Number;
+	int i, Return_Value = -1, j, Current_Record_Number;
 	FILE *Pointer_File_Inbox = NULL, *Pointer_File_Sent = NULL, *Pointer_File_Draft = NULL, *Pointer_File;
 	TSMSRecord *Pointer_SMS_Record, *Pointer_Searched_SMS_Record;
 
@@ -521,27 +525,8 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 	for (i = 1; i <= SMS_RECORDS_MAXIMUM_COUNT; i++)
 	{
 		printf("\033[32mSMS record number = %d\033[0m\n", i); // TEST
-		Result = SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Records[i - 1]); // Record array is zero-based
-		if (Result == -1)
-		{
-			printf("Error : could not download SMS from record %d.\n", i);
-			return -1;
-		}
-
-		// Is the record empty ?
-		if (Result == -3)
-		{
-			printf("\n"); // TEST
-			continue;
-		}
-
-		// Discard unsupported features for now
-		if (Result == -2)
-		{
-			printf("\033[31mUnsupported\033[0m\n\n"); // TEST
-			continue;
-		}
-		printf("\n");
+		SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Records[i - 1]); // Record array is zero-based
+		printf("\n"); // TEST
 	}
 
 	// Create all needed files
