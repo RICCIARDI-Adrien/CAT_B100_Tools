@@ -167,3 +167,42 @@ Exit:
 	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
 	return Return_Value;
 }
+
+void FileManagerDisplayDirectoryListing(TFileManagerList *Pointer_List)
+{
+	TFileManagerFileListItem *Pointer_Item;
+
+	Pointer_Item = Pointer_List->Pointer_Head;
+	while (Pointer_Item != NULL)
+	{
+		// Display file attributes
+		// Archive flag
+		if (FILE_MANAGER_ATTRIBUTE_IS_ARCHIVE(Pointer_Item)) putchar('A');
+		else  putchar('-');
+		// Directory flag
+		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_Item)) putchar('D');
+		else putchar('-');
+		// System flag
+		if (FILE_MANAGER_ATTRIBUTE_IS_SYSTEM(Pointer_Item)) putchar('S');
+		else putchar('-');
+		// Hidden flag
+		if (FILE_MANAGER_ATTRIBUTE_IS_HIDDEN(Pointer_Item)) putchar('H');
+		else putchar('-');
+		// Read only flag
+		if (FILE_MANAGER_ATTRIBUTE_IS_READ_ONLY(Pointer_Item)) putchar('R');
+		else putchar('-');
+
+		// Display file size if this is a regular file
+		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_Item)) printf("             ");
+		else printf("  %11u", Pointer_Item->File_Size);
+
+		// Display the file name
+		printf("  %s", Pointer_Item->String_File_Name);
+		// Add a trailing backslash for a directory name to make this more visual, but do not do that on "." and ".."
+		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_Item) && (strcmp(Pointer_Item->String_File_Name, ".") != 0) && (strcmp(Pointer_Item->String_File_Name, "..") != 0)) putchar('\\');
+
+		// Handle next file
+		putchar('\n');
+		Pointer_Item = Pointer_Item->Pointer_Next_Item;
+	}
+}

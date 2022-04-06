@@ -110,9 +110,7 @@ int main(int argc, char *argv[])
 				printf("Error : failed to list the directory \"%s\".\n", Pointer_String_Argument_1);
 				goto Exit;
 			}
-
-			// TODO better displaying once file flags have been reversed
-			FileManagerListDisplay(&List);
+			FileManagerDisplayDirectoryListing(&List);
 			break;
 
 		case MAIN_COMMAND_GET_ALL_SMS:
