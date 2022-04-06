@@ -29,9 +29,12 @@ int ATCommandReceiveAnswerLine(TSerialPortID Serial_Port_ID, char *Pointer_Strin
  */
 int ATCommandSendCommand(TSerialPortID Serial_Port_ID, char *Pointer_String_Command);
 
-/** TODO
+/** Convert a string containing alphanumerical characters to their binary representation.
+ * @param Pointer_String_Hexadecimal The hexadecimal string to convert.
+ * @param Pointer_Output_Buffer On output, will contain the binary representation of the hexadecimal string.
+ * @param Output_Buffer_Size The maximum size of the output buffer.
  * @return -1 if the provided hexadecimal string is invalid (it contains non-hexadecimal characters, there is an odd amount of characters leading to incomplete hexadecimal bytes, ...),
- * @return 0 on success.
+ * @return 0 or a positive number corresponding to the output binary string size in bytes.
  */
 int ATCommandConvertHexadecimalToBinary(char *Pointer_String_Hexadecimal, unsigned char *Pointer_Output_Buffer, unsigned int Output_Buffer_Size);
 

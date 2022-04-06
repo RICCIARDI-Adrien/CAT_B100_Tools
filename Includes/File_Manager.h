@@ -14,7 +14,8 @@
 typedef struct TFileManagerFileListItem
 {
 	char String_File_Name[256];
-	int Is_Directory;
+	unsigned int File_Size; //!< The phone is using system the FAT32 file system, so 32 bits should be enough.
+	int Flags;
 	struct TFileManagerFileListItem *Pointer_Next_Item;
 } TFileManagerFileListItem;
 
@@ -32,7 +33,7 @@ typedef struct
 /** TODO */
 void FileManagerListInitialize(TFileManagerList *Pointer_List);
 /** TODO */
-void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, int Is_Directory);
+void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags);
 /** TODO */
 void FileManagerListClear(TFileManagerList *Pointer_List);
 /** TODO for debug purpose */

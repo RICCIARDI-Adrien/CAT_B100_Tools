@@ -2,6 +2,7 @@
  * Retrieve data from CAT B100 phone through the serial port interface.
  * @author Adrien RICCIARDI
  */
+#include <AT_Command.h>
 #include <File_Manager.h>
 #include <Serial_Port.h>
 #include <SMS.h>
@@ -34,8 +35,8 @@ int main(int argc, char *argv[])
 	}
 
 	// Try to create all destination directories
-	if (UtilityCreateDirectory("Output") != 0) return -1;
-	if (UtilityCreateDirectory("Output/SMS") != 0) return -1;
+	if (UtilityCreateDirectory("Output") != 0) goto Exit;
+	if (UtilityCreateDirectory("Output/SMS") != 0) goto Exit;
 
 	// TEST
 	/*if (SMSDownloadAll(Serial_Port_ID) != 0)
@@ -53,8 +54,8 @@ int main(int argc, char *argv[])
 			printf("Error : file manager.\n");
 			goto Exit;
 		}
+		FileManagerListDisplay(&List);
 	}
-
 
 	// Everything went fine
 	Return_Value = EXIT_SUCCESS;
