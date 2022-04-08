@@ -50,17 +50,29 @@ void FileManagerListInitialize(TFileManagerList *Pointer_List);
 void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags);
 /** TODO */
 void FileManagerListClear(TFileManagerList *Pointer_List);
-/** TODO for debug purpose */
+/** Display a list internal content, this function is intended for debugging purpose.
+ * @param Pointer_List The list to display content.
+ */
 void FileManagerListDisplay(TFileManagerList *Pointer_List);
 
 /** TODO */
 unsigned int FileManagerListDrives(void); // int for error ?
 
+/** Create a list containing all files and subdirectories in a specified directory, like ls. This function is not recursive and does not list the content of the subdirectories.
+ * @param Serial_Port_ID The serial port the phone is connected to.
+ * @param Pointer_String_Absolute_Path The path of the directory to list. The path must be absolute, directory separators are \ like on Windows.
+ * @param Pointer_List On output, contain the list of the files. This variable must not contain a valid list already, otherwise this will create a memory leak.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
 int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List);
 
 /** Fancy displaying of a list of files, designed to look like the DOS "dir" command.
  * @param Pointer_List The list to display on the screen.
  */
 void FileManagerDisplayDirectoryListing(TFileManagerList *Pointer_List);
+
+/** TODO */
+int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path);
 
 #endif

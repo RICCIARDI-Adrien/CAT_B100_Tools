@@ -4,10 +4,15 @@
  */
 #include <assert.h>
 #include <AT_Command.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <File_Manager.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <Utility.h>
 
 //-------------------------------------------------------------------------------------------------
@@ -117,13 +122,10 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 	FileManagerListInitialize(Pointer_List);
 	do
 	{
-		// Wait for the information string
+		// Wait for a file information string
 		Result = ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary));
 		if (Result == -2) printf("Error : the specified path \"%s\" does not exist.\n", Pointer_String_Absolute_Path);
 		if (Result < 0) goto Exit;
-
-		// Discard empty strings (+EFSL answers are separated by empty strings)
-		if (String_Temporary[0] == 0) continue;
 
 		// Is this a file record ?
 		if (strncmp(String_Temporary, "+EFSL: ", 7) == 0)
@@ -205,4 +207,104 @@ void FileManagerDisplayDirectoryListing(TFileManagerList *Pointer_List)
 		putchar('\n');
 		Pointer_Item = Pointer_Item->Pointer_Next_Item;
 	}
+}
+
+int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path)
+{
+	unsigned char Buffer[512];
+	char String_Temporary[512], String_Payload[512];
+	int File_Descriptor = -1, Return_Value = -1, Size, Result, Read_Index;
+
+	// Try to create the output file first to make sure it can be accessed
+	File_Descriptor = open(Pointer_String_Destination_PC_Path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (File_Descriptor == -1)
+	{
+		printf("Error : could not create the output file \"%s\" (%s).\n", Pointer_String_Destination_PC_Path, strerror(errno));
+		return -1;
+	}
+
+	// Convert the provided path to the character encoding the phone is expecting
+	Size = UtilityConvertString(Pointer_String_Absolute_Phone_Path, Buffer, UTILITY_CHARACTER_SET_UTF8, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, 0, sizeof(Buffer));
+	if (Size == -1)
+	{
+		printf("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Phone_Path);
+		goto Exit;
+	}
+
+	// Allow access to file manager
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=3") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		printf("Error : failed to send the AT command that enables the file manager.\n");
+		return -1;
+	}
+
+	// Send the command
+	strcpy(String_Temporary, "AT+EFSR=\"");
+	ATCommandConvertBinaryToHexadecimal(Buffer, Size, &String_Temporary[9]); // Concatenate the converted path right after the command
+	strcat(String_Temporary, "\"");
+	if (ATCommandSendCommand(Serial_Port_ID, String_Temporary) < 0) goto Exit;
+
+	// Receive all file chunks
+	do
+	{
+		// Wait for a file chunk string
+		Result = ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary));
+		if (Result == -2) printf("Error : the specified path \"%s\" does not exist.\n", Pointer_String_Absolute_Phone_Path);
+		if (Result < 0) goto Exit;
+
+		// Is this a chunk ?
+		if (strncmp(String_Temporary, "+EFSR: ", 7) == 0)
+		{
+			// Extract chunk information
+			if (sscanf(String_Temporary, "+EFSR: %*d, %*d, %d, %n", &Size, &Read_Index) != 1) // The scanf() 'n' modifier does not increase the count returned by the function
+			{
+				printf("Error : could not extract file chunk information.\n");
+				goto Exit;
+			}
+
+			// Make sure the chunk size won't exceed the destination buffer
+			Size *= 2; // The chunk size represents the final size in bytes, however each byte is encoded by two hexadecimal characters, so take this into account
+			if (Size > (int) sizeof(String_Payload))
+			{
+				printf("Error : the chunk payload size is too big.\n");
+				goto Exit;
+			}
+
+			// Retrieve the payload
+			if (sscanf(&String_Temporary[Read_Index], "\"%[0-9A-F]\"", String_Payload) != 1)
+			{
+				printf("Error : failed to extract the payload from the file chunk.\n");
+				goto Exit;
+			}
+
+			// Convert the payload to binary
+			Size = ATCommandConvertHexadecimalToBinary(String_Payload, Buffer, sizeof(Buffer));
+			if (Size < 0)
+			{
+				printf("Error : could not convert file chunk payload from hexadecimal to binary.\n");
+				goto Exit;
+			}
+
+			// Append the data to the file
+			if (write(File_Descriptor, Buffer, Size) != Size)
+			{
+				printf("Error : could not write the file chunk payload to the output file (%s).\n", strerror(errno));
+				goto Exit;
+			}
+		}
+	} while (strcmp(String_Temporary, "OK") != 0);
+
+	// Everything went fine
+	Return_Value = 0;
+
+Exit:
+	if (File_Descriptor != -1) close(File_Descriptor);
+
+	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
+	return Return_Value;
 }

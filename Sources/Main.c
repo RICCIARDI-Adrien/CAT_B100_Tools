@@ -18,6 +18,7 @@
 typedef enum
 {
 	MAIN_COMMAND_LIST_DIRECTORY,
+	MAIN_COMMAND_GET_FILE,
 	MAIN_COMMAND_GET_ALL_SMS,
 	MAIN_COMMANDS_COUNT
 } TMainCommand;
@@ -33,6 +34,7 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 	printf("Usage : %s Serial_Port Command [Parameter]\n"
 		"Available commands :\n"
 		"  list-directory <absolute path>\n"
+		"  get-file <absolute file path on phone> <output file path on PC>\n"
 		"  get-all-sms\n", Pointer_String_Program_Name);
 }
 
@@ -41,7 +43,7 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 //-------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
-	char *Pointer_String_Serial_Port_Device, *Pointer_String_Argument_1 = NULL;
+	char *Pointer_String_Serial_Port_Device, *Pointer_String_Argument_1 = NULL, *Pointer_String_Argument_2 = NULL;
 	TSerialPortID Serial_Port_ID = SERIAL_PORT_INVALID_ID;
 	int Return_Value = EXIT_FAILURE, i;
 	TMainCommand Command = MAIN_COMMANDS_COUNT; // This value is invalid, this allows to detect if no known command was provided by the user
@@ -69,9 +71,35 @@ int main(int argc, char *argv[])
 				MainDisplayUsage(argv[0]);
 				return EXIT_FAILURE;
 			}
+			Pointer_String_Argument_1 = argv[i];
 
 			Command = MAIN_COMMAND_LIST_DIRECTORY;
+			break;
+		}
+		// MAIN_COMMAND_GET_FILE
+		else if (strcmp(argv[i], "get-file") == 0)
+		{
+			// Retrieve the first mandatory argument
+			i++;
+			if (i == argc)
+			{
+				printf("Error : the get-file command needs two arguments, the file path on the phone and the output file path on the PC.\n");
+				MainDisplayUsage(argv[0]);
+				return EXIT_FAILURE;
+			}
 			Pointer_String_Argument_1 = argv[i];
+
+			// Retrieve the second mandatory argument
+			i++;
+			if (i == argc)
+			{
+				printf("Error : the get-file command needs a second argument, the output file path on the PC.\n");
+				MainDisplayUsage(argv[0]);
+				return EXIT_FAILURE;
+			}
+			Pointer_String_Argument_2 = argv[i];
+
+			Command = MAIN_COMMAND_GET_FILE;
 			break;
 		}
 		// MAIN_COMMAND_GET_ALL_SMS
@@ -111,6 +139,16 @@ int main(int argc, char *argv[])
 				goto Exit;
 			}
 			FileManagerDisplayDirectoryListing(&List);
+			FileManagerListClear(&List);
+			break;
+
+		case MAIN_COMMAND_GET_FILE:
+			if (FileManagerDownloadFile(Serial_Port_ID, Pointer_String_Argument_1, Pointer_String_Argument_2) != 0)
+			{
+				printf("Error : could not get the file \"%s\".\n", Pointer_String_Argument_1);
+				goto Exit;
+			}
+			printf("The file \"%s\" was successfully retrieved from the phone.\n", Pointer_String_Argument_1);
 			break;
 
 		case MAIN_COMMAND_GET_ALL_SMS:
