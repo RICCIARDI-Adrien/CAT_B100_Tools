@@ -88,6 +88,76 @@ void FileManagerListDisplay(TFileManagerList *Pointer_List)
 	}
 }
 
+int FileManagerListDrives(TSerialPortID Serial_Port_ID, TFileManagerList *Pointer_List)
+{
+	unsigned char Buffer[128];
+	char String_Temporary[sizeof(Buffer) * 2], String_Drive_Name[sizeof(Buffer) * 2]; // Twice more characters are needed as bytes are converted to hexadecimal characters
+	int Size, Return_Value = -1, Result;
+
+	// Allow access to file manager
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=3") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		printf("Error : failed to send the AT command that enables the file manager.\n");
+		return -1;
+	}
+
+	// Send the command
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+EFSL") < 0) goto Exit;
+
+	// Wait for all file names to be received
+	FileManagerListInitialize(Pointer_List);
+	do
+	{
+		// Wait for a drive information string
+		Result = ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary));
+		if (Result == -2) printf("Error : the 'list drives' command returned an unexpected error.\n");
+		if (Result < 0) goto Exit;
+
+		// Is this a drive record ?
+		if (strncmp(String_Temporary, "+EFSL: ", 7) == 0)
+		{
+			// Extract drive name
+			if (sscanf(String_Temporary, "+EFSL: \"%[0-9A-F]\"", String_Drive_Name) != 1)
+			{
+				printf("Error : could not extract the drive name from the command answer \"%s\".\n", String_Temporary);
+				goto Exit;
+			}
+
+			// Convert the drive name to binary UTF-16, so it can be converted to UTF-8
+			Size = ATCommandConvertHexadecimalToBinary(String_Drive_Name, (unsigned char *) String_Temporary, sizeof(String_Temporary));
+			if (Size < 0)
+			{
+				printf("Error : could not convert the drive name hexadecimal string \"%s\" to binary.\n", String_Drive_Name);
+				goto Exit;
+			}
+
+			// Convert the drive name to UTF-8
+			Size = UtilityConvertString(String_Temporary, String_Drive_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Drive_Name));
+			if (Size < 0)
+			{
+				printf("Error : could not convert a drive name from UTF-16 to UTF-8.\n");
+				goto Exit;
+			}
+			String_Drive_Name[Size] = 0; // Make sure the string is terminated
+
+			// Append the drive to the list
+			FileManagerListAddFile(Pointer_List, String_Drive_Name, 0, 0);
+		}
+	} while (strcmp(String_Temporary, "OK") != 0);
+
+	// Everything went fine
+	Return_Value = 0;
+
+Exit:
+	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
+	return Return_Value;
+}
+
 int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List)
 {
 	unsigned char Buffer[512];

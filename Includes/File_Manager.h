@@ -44,7 +44,10 @@ typedef struct
 // Functions
 //-------------------------------------------------------------------------------------------------
 // File lists management functions
-/** TODO */
+/** Clear all internal fields of the list to make it ready to use by other list functions.
+ * @param Pointer_List The list to initialize.
+ * @warning This function assumes that the list is not initialized or has been already cleared with FileManagerListClear(). Passing an initialized list to this function will result in a memory leak.
+ */
 void FileManagerListInitialize(TFileManagerList *Pointer_List);
 /** TODO */
 void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags);
@@ -55,8 +58,13 @@ void FileManagerListClear(TFileManagerList *Pointer_List);
  */
 void FileManagerListDisplay(TFileManagerList *Pointer_List);
 
-/** TODO */
-unsigned int FileManagerListDrives(void); // int for error ?
+/** Find all available drives (C:, D: and so on).
+ * @param Serial_Port_ID The serial port the phone is connected to.
+ * @param Pointer_List On output, contain the list of the drives. This variable must not contain a valid list already, otherwise this will create a memory leak.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
+int FileManagerListDrives(TSerialPortID Serial_Port_ID, TFileManagerList *Pointer_List);
 
 /** Create a list containing all files and subdirectories in a specified directory, like ls. This function is not recursive and does not list the content of the subdirectories.
  * @param Serial_Port_ID The serial port the phone is connected to.

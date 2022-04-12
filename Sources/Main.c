@@ -17,6 +17,7 @@
 /** All available command line interface commands. */
 typedef enum
 {
+	MAIN_COMMAND_LIST_DRIVES,
 	MAIN_COMMAND_LIST_DIRECTORY,
 	MAIN_COMMAND_GET_FILE,
 	MAIN_COMMAND_GET_ALL_SMS,
@@ -31,10 +32,12 @@ typedef enum
  */
 static void MainDisplayUsage(char *Pointer_String_Program_Name)
 {
-	printf("Usage : %s Serial_Port Command [Parameter]\n"
-		"Available commands :\n"
+	printf("Usage : %s Serial_Port Command [Parameter_1] [Parameter_2]...\n"
+		"File commands :\n"
+		"  list-drives\n"
 		"  list-directory <absolute path>\n"
 		"  get-file <absolute file path on phone> <output file path on PC>\n"
+		"SMS commands :\n"
 		"  get-all-sms\n", Pointer_String_Program_Name);
 }
 
@@ -60,8 +63,14 @@ int main(int argc, char *argv[])
 	// Parse command and parameters
 	for (i = 2; i < argc; i++)
 	{
+		// MAIN_COMMAND_LIST_DRIVES
+		if (strcmp(argv[i], "list-drives") == 0)
+		{
+			Command = MAIN_COMMAND_LIST_DRIVES;
+			break;
+		}
 		// MAIN_COMMAND_LIST_DIRECTORY
-		if (strcmp(argv[i], "list-directory") == 0)
+		else if (strcmp(argv[i], "list-directory") == 0)
 		{
 			// Retrieve the mandatory argument
 			i++;
@@ -132,6 +141,16 @@ int main(int argc, char *argv[])
 	// Run the command
 	switch (Command)
 	{
+		case MAIN_COMMAND_LIST_DRIVES:
+			if (FileManagerListDrives(Serial_Port_ID, &List) != 0)
+			{
+				printf("Error : failed to list the drives.\n");
+				goto Exit;
+			}
+			FileManagerDisplayDirectoryListing(&List);
+			FileManagerListClear(&List);
+			break;
+
 		case MAIN_COMMAND_LIST_DIRECTORY:
 			if (FileManagerListDirectory(Serial_Port_ID, Pointer_String_Argument_1, &List) != 0)
 			{
