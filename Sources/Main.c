@@ -4,6 +4,7 @@
  */
 #include <AT_Command.h>
 #include <File_Manager.h>
+#include <MMS.h>
 #include <Serial_Port.h>
 #include <SMS.h>
 #include <stdio.h>
@@ -20,6 +21,7 @@ typedef enum
 	MAIN_COMMAND_LIST_DRIVES,
 	MAIN_COMMAND_LIST_DIRECTORY,
 	MAIN_COMMAND_GET_FILE,
+	MAIN_COMMAND_GET_ALL_MMS,
 	MAIN_COMMAND_GET_ALL_SMS,
 	MAIN_COMMANDS_COUNT
 } TMainCommand;
@@ -37,6 +39,8 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 		"  list-drives\n"
 		"  list-directory <absolute path>\n"
 		"  get-file <absolute file path on phone> <output file path on PC>\n"
+		"MMS commands :\n"
+		"  get-all-mms\n"
 		"SMS commands :\n"
 		"  get-all-sms\n", Pointer_String_Program_Name);
 }
@@ -111,6 +115,12 @@ int main(int argc, char *argv[])
 			Command = MAIN_COMMAND_GET_FILE;
 			break;
 		}
+		// MAIN_COMMAND_GET_ALL_MMS
+		else if (strcmp(argv[i], "get-all-mms") == 0)
+		{
+			Command = MAIN_COMMAND_GET_ALL_MMS;
+			break;
+		}
 		// MAIN_COMMAND_GET_ALL_SMS
 		else if (strcmp(argv[i], "get-all-sms") == 0)
 		{
@@ -168,6 +178,15 @@ int main(int argc, char *argv[])
 				goto Exit;
 			}
 			printf("The file \"%s\" was successfully retrieved from the phone.\n", Pointer_String_Argument_1);
+			break;
+
+		case MAIN_COMMAND_GET_ALL_MMS:
+			if (MMSDownloadAll(Serial_Port_ID) != 0)
+			{
+				printf("Error : failed to download MMS.\n");
+				goto Exit;
+			}
+			printf("All MMS were successfully retrieved.\n");
 			break;
 
 		case MAIN_COMMAND_GET_ALL_SMS:
