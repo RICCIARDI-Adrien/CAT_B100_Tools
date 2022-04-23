@@ -49,9 +49,17 @@ typedef struct
  * @warning This function assumes that the list is not initialized or has been already cleared with FileManagerListClear(). Passing an initialized list to this function will result in a memory leak.
  */
 void FileManagerListInitialize(TFileManagerList *Pointer_List);
-/** TODO */
+/** Append a new item made of the provided file information to the end of the list.
+ * @param Pointer_List The list to add an item to the tail. This list must have been previously initialized.
+ * @param Pointer_String_File_Name The file name string content will be copied to the newly added list item.
+ * @param File_Size The file size value will be copied to the newly added list item.
+ * @param Flags The flags value will be copied to the newly added list item.
+ */
 void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags);
-/** TODO */
+/** Free all resources used by a list.
+ * @param Pointer_List The list to release resources from.
+ * @warning This function assumes that the list has already been initialized. Passing an uninitialized list can lead to a crash.
+ */
 void FileManagerListClear(TFileManagerList *Pointer_List);
 /** Display a list internal content, this function is intended for debugging purpose.
  * @param Pointer_List The list to display content.
@@ -80,7 +88,13 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
  */
 void FileManagerDisplayDirectoryListing(TFileManagerList *Pointer_List);
 
-/** TODO */
+/** Retrieve a file content from the phone.
+ * @param Serial_Port_ID The serial port the phone is connected to.
+ * @param Pointer_String_Absolute_Phone_Path The file path and name. This must be the absolute path starting from the drive, directory separators are \ like on Windows.
+ * @param Pointer_String_Destination_PC_Path The file path and name that will be created on the local PC.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
 int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path);
 
 #endif
