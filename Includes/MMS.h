@@ -1,5 +1,8 @@
 /** @file MMS.h
  * Retrieve MMS text and attached files from phone.
+ * MMS files decoding is based on the following specifications from the Open Mobile Alliance :
+ * - OMA-TS-MMS_ENC-V1_3-20110913-A
+ * - WAP-230-WSP-20010705-a
  * @author Adrien RICCIARDI
  */
 #ifndef H_MMS_H
