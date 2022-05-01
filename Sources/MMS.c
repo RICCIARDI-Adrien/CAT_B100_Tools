@@ -196,7 +196,38 @@ static int MMSReadStringField(FILE *Pointer_File, char *Pointer_String_Output, u
 }
 
 /** TODO */
-static int MMSReadWAPValueLength(FILE *Pointer_File, int *Pointer_Length)
+static int MMSReadWAPVariableLengthUnsignedInteger(FILE *Pointer_File, unsigned int *Pointer_Unsigned_Integer)
+{
+	unsigned char Byte;
+	unsigned int Temporary_Unsigned_Integer = 0;
+	int i;
+
+	// WAP-230-WSP-20010705-a specification chapter 8.1.2 tells that an uintvar is stored in up to 5 bytes
+	for (i = 0; i < 5; i++)
+	{
+		// Read the next byte
+		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+
+		// Extract the byte payload
+		Temporary_Unsigned_Integer |= Byte & 0x7F;
+
+		// The number is complete when the but 7 is cleared
+		if (!(Byte & 0x80))
+		{
+			*Pointer_Unsigned_Integer = Temporary_Unsigned_Integer;
+			return 0;
+		}
+
+		// Make room for the next byte
+		Temporary_Unsigned_Integer <<= 7;
+	}
+
+	// There are too much bytes in this uintvar, it can't be valid
+	return -1;
+}
+
+/** TODO */
+static int MMSReadWAPValueLength(FILE *Pointer_File, unsigned int *Pointer_Length)
 {
 	unsigned char Byte;
 
@@ -215,10 +246,129 @@ static int MMSReadWAPValueLength(FILE *Pointer_File, int *Pointer_Length)
 		return -1;
 	}
 
-	// TODO handle uintvar for more than 1 byte
-	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+	// Get the length stored as uintvar
+	if (MMSReadWAPVariableLengthUnsignedInteger(Pointer_File, Pointer_Length) != 0)
+	{
+		LOG("Error : could not read uintvar.\n");
+		return -1;
+	}
 
 	return Byte;
+}
+
+/** Read the provided until the specified pattern has been found or the end of the file has been encountered.
+ * @param Pointer_File The file to read from.
+ * @param Pointer_Pattern The binary pattern to search.
+ * @param Pattern_Size The size in bytes of the pattern to search.
+ * @return -1 if the pattern could not be found or if an error occurred,
+ * @return 0 if the pattern was successfully found. In this case, the file pointer is on the byte following the pattern.
+ */
+static int MMSReadFileUpToBinaryPattern(FILE *Pointer_File, void *Pointer_Pattern, int Pattern_Size)
+{
+	unsigned char Byte, *Pointer_Pattern_Bytes = Pointer_Pattern;
+	int Matching_Bytes_Count = 0;
+
+	while (1)
+	{
+		// Get the next byte
+		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+
+		// Restart searching from the beginning of the pattern as soon as a byte does not match
+		if (Byte == Pointer_Pattern_Bytes[Matching_Bytes_Count]) Matching_Bytes_Count++;
+		else Matching_Bytes_Count = 0;
+
+		// Has the whole pattern been found ?
+		if (Matching_Bytes_Count >= Pattern_Size) return 0;
+	}
+}
+
+/** TODO */
+int MMSExtractAttachedFile(FILE *Pointer_File, char *Pointer_String_Output_Directory_Path)
+{
+	static unsigned char Buffer[4096]; // This buffer is too big to be stored on stack
+	unsigned char Byte;
+	unsigned int Length;
+	char String_File_Name[256], String_Temporary[512];
+	FILE *Pointer_File_Output = NULL;
+	int Return_Value = -1;
+	size_t Chunk_Size;
+
+	// Bypass the initial unknown byte
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+
+	// Extract attached file length
+	if (MMSReadWAPVariableLengthUnsignedInteger(Pointer_File, &Length) != 0)
+	{
+		LOG("Error : could not read attached file size.\n");
+		return -1;
+	}
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file size : %u.\n", Length);
+
+	// Ignore unknown bytes until a specific flag is found
+	while (1)
+	{
+		if (fread(&Byte, 1, 1, Pointer_File) != 1)
+		{
+			LOG("Error : the MMS file end has been reached.\n");
+			return -1;
+		}
+		if ((Byte == 0x85) || (Byte == 0x86) || (Byte == 0x8E)) break;
+	}
+
+	// Get file name
+	if (MMSReadStringField(Pointer_File, String_File_Name, sizeof(String_File_Name)) != 0) return -1;
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name : \"%s\".\n", String_File_Name);
+
+	// Read the second file name record
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+	if ((Byte != 0x85) && (Byte != 0x86) && (Byte != 0x8E))
+	{
+		LOG("Error : wrong second file name record identifier (0x%02X).\n", Byte);
+		return -1;
+	}
+	if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) return -1;
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name second record : \"%s\".\n", String_Temporary);
+
+	// Ignore unknown bytes until a specific flag is found
+	while (1)
+	{
+		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+		if ((Byte == 0x85) || (Byte == 0x86) || (Byte == 0x8E) || (Byte == 0xC0)) break;
+	}
+	if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) return -1;
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name third record : \"%s\".\n", String_Temporary);
+
+	// Try to create the output file
+	snprintf(String_Temporary, sizeof(String_Temporary), "%s/%s", Pointer_String_Output_Directory_Path, String_File_Name);
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file output path : \"%s\"\n", String_Temporary);
+	Pointer_File_Output = fopen(String_Temporary, "w");
+	if (Pointer_File_Output == NULL)
+	{
+		LOG("Error : failed to create the attached file \"%s\".\n", String_Temporary);
+		return -1;
+	}
+
+	// Copy the attached file content to the output file
+	while (Length > 0)
+	{
+		// Read no more bytes than the buffer size, but when the attached file end has been reached
+		if (Length >= sizeof(Buffer)) Chunk_Size = sizeof(Buffer);
+		else Chunk_Size = Length;
+
+		// Copy a chunk of data
+		if (fread(Buffer, Chunk_Size, 1, Pointer_File) != 1) goto Exit;
+		if (fwrite(Buffer, Chunk_Size, 1, Pointer_File_Output) != 1) goto Exit;
+
+		// Prepare for next chunk
+		Length -= Chunk_Size;
+	}
+
+	// Everything went fine
+	Return_Value = 0;
+
+Exit:
+	if (Pointer_File_Output != NULL) fclose(Pointer_File_Output);
+	return Return_Value;
 }
 
 /** TODO */
@@ -228,9 +378,10 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 	unsigned char Byte, Buffer[256]; // A field size is stored on one byte, with 256 bytes even an invalid size can't overflow the buffer
 	size_t Read_Bytes_Count;
 	char String_Temporary[256], String_Sender_Phone_Number[32];
-	int Return_Value = -1, Length, *Pointer_Integer;
+	int Return_Value = -1, *Pointer_Integer, Result;
 	struct tm *Pointer_Broken_Down_Time;
 	time_t Unix_Timestamp;
+	unsigned int Length;
 
 	// Try to open the file
 	Pointer_File = fopen(Pointer_String_Raw_MMS_File_Path, "r");
@@ -251,7 +402,6 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			LOG("Error : failed to read the MMS file \"%s\" (%s).\n", Pointer_String_Raw_MMS_File_Path, strerror(errno));
 			break;
 		}
-		printf("BYTE = 0x%02X\n", Byte);
 
 		// This byte should be a field ID (the values come from the )
 		Byte &= 0x7F; // Field IDs use only the last 7 bits
@@ -322,7 +472,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found From record.\n");
 				// Get Value-length field
 				if (MMSReadWAPValueLength(Pointer_File, &Length) != 0) goto Exit;
-				if (Length >= (int) sizeof(String_Temporary))
+				if (Length >= sizeof(String_Temporary))
 				{
 					LOG("Error : the From address size is too big.\n");
 					goto Exit;
@@ -680,6 +830,20 @@ Parse_Attached_Files:
 		Pointer_Broken_Down_Time->tm_sec);
 	if (UtilityCreateDirectory(String_Temporary) != 0) goto Exit;
 
+	// Bypass all the remaining header files and the complete SMIL presentation section
+	if (MMSReadFileUpToBinaryPattern(Pointer_File, "</smil>\n", 8) != 0)
+	{
+		LOG("Error : could not find the end of the SMIL presentation section in the MMS file.\n");
+		goto Exit;
+	}
+
+	// Retrieve each attached file
+	do
+	{
+		Result = MMSExtractAttachedFile(Pointer_File, String_Temporary);
+	} while (Result == 0);
+	//if (Result < 0) goto Exit; TODO
+
 	// Everything went fine
 	Return_Value = 0;
 
@@ -785,7 +949,6 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 					goto Exit;
 				}
 
-				printf("fich = %s\n", String_Temporary);
 
 				// Extract payload from MMS
 				sprintf(String_Temporary, "Output/MMS/%s", Pointer_Strings_Storage_Location_Names[Location_Index]);
