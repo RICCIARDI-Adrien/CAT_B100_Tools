@@ -2,6 +2,7 @@
  * See MMS.h for description.
  * @author Adrien RICCIARDI
  */
+#include <arpa/inet.h>
 #include <AT_Command.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -12,6 +13,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 #include <Utility.h>
 
@@ -145,9 +147,31 @@ static int MMSGetStorageInformation(TSerialPortID Serial_Port_ID, TMMSStorageLoc
 	return 0;
 }
 
-/** TODO */
+/** TODO
+ * Designed for Encoded-string-value
+ */
 static int MMSReadStringField(FILE *Pointer_File, char *Pointer_String_Output, unsigned int Buffer_Size)
 {
+	unsigned char Byte;
+
+	// Is the first byte the Value-length ?
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+	if (Byte == 31)
+	{
+		// Discard Value-length value (TODO handle uintvar)
+		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+		// Discard Char-set value
+		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+	}
+	else
+	{
+		// Store the byte as a regular character into the string
+		*Pointer_String_Output = Byte;
+		if (Byte == 0) return 0;
+		Pointer_String_Output++;
+		Buffer_Size--;
+	}
+
 	// Read characters without overflowing the output buffer
 	while (Buffer_Size > 0)
 	{
@@ -172,13 +196,41 @@ static int MMSReadStringField(FILE *Pointer_File, char *Pointer_String_Output, u
 }
 
 /** TODO */
+static int MMSReadWAPValueLength(FILE *Pointer_File, int *Pointer_Length)
+{
+	unsigned char Byte;
+
+	// First byte is the short length
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+	if (Byte < 31)
+	{
+		*Pointer_Length = Byte;
+		return 0;
+	}
+
+	// The specification does not tell what to do if the value is not 31
+	if (Byte != 31)
+	{
+		LOG("Error : the WAP \"Length-quote\" octet should be 31 here, but it is %d.\n", Byte);
+		return -1;
+	}
+
+	// TODO handle uintvar for more than 1 byte
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+
+	return Byte;
+}
+
+/** TODO */
 static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Pointer_String_Output_Directory_Path)
 {
 	FILE *Pointer_File = NULL;
 	unsigned char Byte, Buffer[256]; // A field size is stored on one byte, with 256 bytes even an invalid size can't overflow the buffer
 	size_t Read_Bytes_Count;
-	char String_Temporary[128];
-	int Return_Value = -1;
+	char String_Temporary[256], String_Sender_Phone_Number[32];
+	int Return_Value = -1, Length, *Pointer_Integer;
+	struct tm *Pointer_Broken_Down_Time;
+	time_t Unix_Timestamp;
 
 	// Try to open the file
 	Pointer_File = fopen(Pointer_String_Raw_MMS_File_Path, "r");
@@ -188,6 +240,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 		return -1;
 	}
 
+	// Extract some useful data from the header
 	while (1)
 	{
 		// Retrieve next byte
@@ -206,14 +259,14 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 		{
 			// Bcc
 			case 0x01:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Bcc record.\n");
-				// TODO
+				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Bcc record : \"%s\".\n", String_Temporary);
 				break;
 
 			// Cc
 			case 0x02:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Cc record.\n");
-				// TODO
+				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Cc record : \"%s\".\n", String_Temporary);
 				break;
 
 			// Content location
@@ -224,24 +277,32 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// Content type
 			case 0x04:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content type record.\n");
-				// TODO
-				break;
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content type record, stopping header parsing.\n");
+				goto Parse_Attached_Files;
 
 			// Date
 			case 0x05:
 				// Get the field size
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
+				// Get the date data
 				if (fread(Buffer, Byte, 1, Pointer_File) != 1) goto Exit;
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Date record.\n");
-				// TODO
+				// Date is a classic Unix timestamp stored in big endian
+				Pointer_Integer = (int *) Buffer;
+				Unix_Timestamp = (time_t) ntohl(*Pointer_Integer);
+				Pointer_Broken_Down_Time = gmtime(&Unix_Timestamp);
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Date record : %04d-%02d-%02d %02d:%02d:%02d.\n",
+					Pointer_Broken_Down_Time->tm_year + 1900,
+					Pointer_Broken_Down_Time->tm_mon + 1,
+					Pointer_Broken_Down_Time->tm_wday + 1,
+					Pointer_Broken_Down_Time->tm_hour,
+					Pointer_Broken_Down_Time->tm_min,
+					Pointer_Broken_Down_Time->tm_sec);
 				break;
 
 			// Delivery report
 			case 0x06:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Delivery report record : %d.\n", Byte);
-				// TODO
 				break;
 
 			// Delivery time
@@ -258,39 +319,46 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// From
 			case 0x09:
-				// Bypass two unknown bytes
-				if (fread(&Byte, 2, 1, Pointer_File) != 1) goto Exit;
-				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found From record : \"%s\".\n", String_Temporary);
-				// TODO
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found From record.\n");
+				// Get Value-length field
+				if (MMSReadWAPValueLength(Pointer_File, &Length) != 0) goto Exit;
+				if (Length >= (int) sizeof(String_Temporary))
+				{
+					LOG("Error : the From address size is too big.\n");
+					goto Exit;
+				}
+				// Next byte can be Address-present-token (in this case the address is provided), or Insert-address-token (no address is provided)
+				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
+				if (Byte == 128)
+				{
+					if (MMSReadStringField(Pointer_File, String_Sender_Phone_Number, sizeof(String_Sender_Phone_Number)) != 0) goto Exit;
+					LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Phone number is provided in From record : \"%s\".\n", String_Sender_Phone_Number);
+				}
+				else LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "The From record does not contain a phone number.\n");
 				break;
 
 			// Message class
 			case 0x0A:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Message class record : %d.\n", Byte);
-				// TODO
 				break;
 
 			// Message ID
 			case 0x0B:
 				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Message ID record : \"%s\".\n", String_Temporary);
-				// TODO
 				break;
 
 			// Message type
 			case 0x0C:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Message type record : %d.\n", Byte);
-				// TODO
 				break;
 
 			// MMS version
 			case 0x0D:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found MMS version record : %d.\n", Byte);
-				// TODO
 				break;
 
 			// Message size
@@ -303,14 +371,12 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x0F:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Priority record : %d.\n", Byte);
-				// TODO
 				break;
 
 			// Read report
 			case 0x10:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Read report record : %d.\n", Byte);
-				// TODO
 				break;
 
 			// Report allowed
@@ -345,22 +411,20 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// Subject
 			case 0x16:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Subject record.\n");
-				// TODO
+				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Subject record : \"%s\".\n", String_Temporary);
 				break;
 
 			// To
 			case 0x17:
 				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found To record : \"%s\".\n", String_Temporary);
-				// TODO
 				break;
 
 			// Transaction ID
 			case 0x18:
 				if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) goto Exit;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Transaction ID record : \"%s\".\n", String_Temporary);
-				// TODO
 				break;
 
 			// Retrieve status
@@ -602,6 +666,19 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 				goto Exit;
 		}
 	}
+
+Parse_Attached_Files:
+	// Create the directory to which the extracted attached files will be saved
+	sprintf(String_Temporary, "%s/%s_%04d-%02d-%02d_%02d-%02d-%02d",
+		Pointer_String_Output_Directory_Path,
+		String_Sender_Phone_Number,
+		Pointer_Broken_Down_Time->tm_year + 1900,
+		Pointer_Broken_Down_Time->tm_mon + 1,
+		Pointer_Broken_Down_Time->tm_wday + 1,
+		Pointer_Broken_Down_Time->tm_hour,
+		Pointer_Broken_Down_Time->tm_min,
+		Pointer_Broken_Down_Time->tm_sec);
+	if (UtilityCreateDirectory(String_Temporary) != 0) goto Exit;
 
 	// Everything went fine
 	Return_Value = 0;
