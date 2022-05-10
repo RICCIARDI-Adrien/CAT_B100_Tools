@@ -239,11 +239,12 @@ static int MMSReadWAPValueLength(FILE *Pointer_File, unsigned int *Pointer_Lengt
 		return 0;
 	}
 
-	// The specification does not tell what to do if the value is not 31
+	// The specification does not tell what to do if the value is not 31, returning a length of 0 seems to be fine
 	if (Byte != 31)
 	{
-		LOG("Error : the WAP \"Length-quote\" octet should be 31 here, but it is %d.\n", Byte);
-		return -1;
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Warning: the WAP \"Length-quote\" octet should be 31 here, but it is %d.\n", Byte);
+		*Pointer_Length = 0;
+		return 0;
 	}
 
 	// Get the length stored as uintvar
@@ -253,94 +254,166 @@ static int MMSReadWAPValueLength(FILE *Pointer_File, unsigned int *Pointer_Lengt
 		return -1;
 	}
 
-	return Byte;
+	return 0;
 }
 
-/** Read the provided until the specified pattern has been found or the end of the file has been encountered.
- * @param Pointer_File The file to read from.
- * @param Pointer_Pattern The binary pattern to search.
- * @param Pattern_Size The size in bytes of the pattern to search.
- * @return -1 if the pattern could not be found or if an error occurred,
- * @return 0 if the pattern was successfully found. In this case, the file pointer is on the byte following the pattern.
+/** TODO
+ * For now the content type data are discarded.
  */
-static int MMSReadFileUpToBinaryPattern(FILE *Pointer_File, void *Pointer_Pattern, int Pattern_Size)
+static int MMSReadWAPContentType(FILE *Pointer_File, unsigned int *Pointer_Length)
 {
-	unsigned char Byte, *Pointer_Pattern_Bytes = Pointer_Pattern;
-	int Matching_Bytes_Count = 0;
+	unsigned char Byte, Buffer[256];
 
-	while (1)
+	// This field is encoded according to WSP protocol, see WAP-230-WSP-20010705-a specification chapter 8.4.2.24
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) // Get the field value as named in chapter 8.4.1.2
 	{
-		// Get the next byte
-		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
-
-		// Restart searching from the beginning of the pattern as soon as a byte does not match
-		if (Byte == Pointer_Pattern_Bytes[Matching_Bytes_Count]) Matching_Bytes_Count++;
-		else Matching_Bytes_Count = 0;
-
-		// Has the whole pattern been found ?
-		if (Matching_Bytes_Count >= Pattern_Size) return 0;
+		LOG("Error : could not read the field value byte (%s).\n", strerror(errno));
+		return -1;
 	}
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type field value byte : %d.\n", Byte);
+	if (Byte <= 30)
+	{
+		// The following byte indicates the size of the data bytes (up to 30), get its value
+		//if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+		// This byte indicates the size of the data
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %d bytes.\n", Byte);
+		*Pointer_Length = Byte;
+
+		// Read the data and discard it for now
+		if (fread(Buffer, Byte, 1, Pointer_File) != 1)
+		{
+			LOG("Error : could not read the content type data (%s).\n", strerror(errno));
+			return -1;
+		}
+	}
+	else if (Byte == 31)
+	{
+		// Get the media type field length
+		if (MMSReadWAPValueLength(Pointer_File, Pointer_Length) != 0)
+		{
+			LOG("Error : could not read media type field length.\n");
+			return -1;
+		}
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %u bytes.\n", *Pointer_Length);
+
+		// Read the data if any and discard it for now
+		if (*Pointer_Length > 0)
+		{
+			// Make sure there is enough place in the destination buffer
+			if (*Pointer_Length > sizeof(Buffer))
+			{
+				LOG("Error : the content type length is too big (%u bytes).\n", *Pointer_Length);
+				return -1;
+			}
+			if (fread(Buffer, *Pointer_Length, 1, Pointer_File) != 1) return -1;
+		}
+	}
+	else if (Byte < 127)
+	{
+		if (MMSReadStringField(Pointer_File, (char *) Buffer, sizeof(Buffer)) != 0) return -1;
+		*Pointer_Length = strlen((char *) Buffer);
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %d bytes, Content type string : \"%s\"\n", *Pointer_Length, (char *) Buffer);
+	}
+	else
+	{
+		LOG("Error : unknown content type first byte 0x%02X, aborting.\n", Byte);
+		return -1;
+	}
+
+	return 0;
 }
 
-/** TODO */
+/** TODO
+ * @note This function assumes for now that only Application/vnd.wap.multipart.* are found in messages.
+ * @note See WAP-230-WSP-20010705-a chapter 8.5 for more information about headers.
+ */
 int MMSExtractAttachedFile(FILE *Pointer_File, char *Pointer_String_Output_Directory_Path)
 {
 	static unsigned char Buffer[4096]; // This buffer is too big to be stored on stack
-	unsigned char Byte;
-	unsigned int Length;
+	unsigned int Headers_Length, Data_Length, Length, i;
 	char String_File_Name[256], String_Temporary[512];
 	FILE *Pointer_File_Output = NULL;
 	int Return_Value = -1;
 	size_t Chunk_Size;
+	long Position_Before_Content_Type, Position_After_Content_Type;
 
-	// Bypass the initial unknown byte
-	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+	// Retrieve header length (this the length of the headers + the length of the data)
+	if (MMSReadWAPVariableLengthUnsignedInteger(Pointer_File, &Headers_Length) != 0)
+	{
+		LOG("Error : could not read headers length.\n");
+		return -1;
+	}
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Headers + content type length : %u.\n", Headers_Length);
 
 	// Extract attached file length
-	if (MMSReadWAPVariableLengthUnsignedInteger(Pointer_File, &Length) != 0)
+	if (MMSReadWAPVariableLengthUnsignedInteger(Pointer_File, &Data_Length) != 0)
 	{
-		LOG("Error : could not read attached file size.\n");
+		LOG("Error : could not read data length.\n");
 		return -1;
 	}
-	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file size : %u.\n", Length);
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Data length : %u.\n", Data_Length);
 
-	// Ignore unknown bytes until a specific flag is found
-	while (1)
+	// Keep the file position before reading the content type, so the total amount of read bytes for the content type can be determined
+	Position_Before_Content_Type = ftell(Pointer_File);
+	if (Position_Before_Content_Type < 0)
 	{
-		if (fread(&Byte, 1, 1, Pointer_File) != 1)
+		LOG("Error : could not get the file position before reading the content type field (%s).\n", strerror(errno));
+		return -1;
+	}
+	printf("av %ld\n", Position_Before_Content_Type);
+	// Extract content type
+	if (MMSReadWAPContentType(Pointer_File, &Length) != 0)
+	{
+		LOG("Error : could not read content type.\n");
+		return -1;
+	}
+	// Get the file position after reading the content type
+	Position_After_Content_Type = ftell(Pointer_File);
+	if (Position_After_Content_Type < 0)
+	{
+		LOG("Error : could not get the file position after reading the content type field (%s).\n", strerror(errno));
+		return -1;
+	}
+	printf("ap %ld\n", Position_After_Content_Type);
+
+	// Extract headers
+	Length = Headers_Length - (Position_After_Content_Type - Position_Before_Content_Type);
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Computed headers length : %u.\n", Length);
+	if (Length > sizeof(Buffer))
+	{
+		LOG("Error : the headers are too big to fit in the buffer (length : %u).\n", Length);
+		return -1;
+	}
+	if (fread(Buffer, Length, 1, Pointer_File) != 1)
+	{
+		LOG("Error : could not read headers.\n");
+		return -1;
+	}
+
+	// Search for a specific tag that precedes the file name TODO better when the headers specs is found
+	for (i = 0; i < Length; i++)
+	{
+		if (Buffer[i] == 0x8E)
 		{
-			LOG("Error : the MMS file end has been reached.\n");
-			return -1;
+			i++; // Bypass the tag byte
+			break;
 		}
-		if ((Byte == 0x85) || (Byte == 0x86) || (Byte == 0x8E)) break;
 	}
-
-	// Get file name
-	if (MMSReadStringField(Pointer_File, String_File_Name, sizeof(String_File_Name)) != 0) return -1;
-	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name : \"%s\".\n", String_File_Name);
-
-	// Read the second file name record
-	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
-	if ((Byte != 0x85) && (Byte != 0x86) && (Byte != 0x8E))
+	if (i == Length)
 	{
-		LOG("Error : wrong second file name record identifier (0x%02X).\n", Byte);
+		LOG("Error : no file name could be found.\n");
 		return -1;
 	}
-	if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) return -1;
-	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name second record : \"%s\".\n", String_Temporary);
-
-	// Ignore unknown bytes until a specific flag is found
-	while (1)
-	{
-		if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
-		if ((Byte == 0x85) || (Byte == 0x86) || (Byte == 0x8E) || (Byte == 0xC0)) break;
-	}
-	if (MMSReadStringField(Pointer_File, String_Temporary, sizeof(String_Temporary)) != 0) return -1;
-	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name third record : \"%s\".\n", String_Temporary);
+	// Adjust length to the file name string length
+	Length -= i;
+	// Get file name
+	strncpy(String_File_Name, (char *) &Buffer[i], Length - 1); // Make room for the terminating zero
+	String_File_Name[Length - 1] = 0; // Make sure string is terminated
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file name : \"%s\".\n", String_File_Name);
 
 	// Try to create the output file
 	snprintf(String_Temporary, sizeof(String_Temporary), "%s/%s", Pointer_String_Output_Directory_Path, String_File_Name);
-	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file output path : \"%s\"\n", String_Temporary);
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached file output path : \"%s\".\n", String_Temporary);
 	Pointer_File_Output = fopen(String_Temporary, "w");
 	if (Pointer_File_Output == NULL)
 	{
@@ -349,18 +422,18 @@ int MMSExtractAttachedFile(FILE *Pointer_File, char *Pointer_String_Output_Direc
 	}
 
 	// Copy the attached file content to the output file
-	while (Length > 0)
+	while (Data_Length > 0)
 	{
 		// Read no more bytes than the buffer size, but when the attached file end has been reached
-		if (Length >= sizeof(Buffer)) Chunk_Size = sizeof(Buffer);
-		else Chunk_Size = Length;
+		if (Data_Length >= sizeof(Buffer)) Chunk_Size = sizeof(Buffer);
+		else Chunk_Size = Data_Length;
 
 		// Copy a chunk of data
 		if (fread(Buffer, Chunk_Size, 1, Pointer_File) != 1) goto Exit;
 		if (fwrite(Buffer, Chunk_Size, 1, Pointer_File_Output) != 1) goto Exit;
 
 		// Prepare for next chunk
-		Length -= Chunk_Size;
+		Data_Length -= Chunk_Size;
 	}
 
 	// Everything went fine
@@ -378,7 +451,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 	unsigned char Byte, Buffer[256]; // A field size is stored on one byte, with 256 bytes even an invalid size can't overflow the buffer
 	size_t Read_Bytes_Count;
 	char String_Temporary[256], String_Sender_Phone_Number[32];
-	int Return_Value = -1, *Pointer_Integer, Result;
+	int Return_Value = -1, *Pointer_Integer, i, Attached_Files_Count;
 	struct tm *Pointer_Broken_Down_Time;
 	time_t Unix_Timestamp;
 	unsigned int Length;
@@ -427,7 +500,13 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// Content type
 			case 0x04:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content type record, stopping header parsing.\n");
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content type record.\n");
+				if (MMSReadWAPContentType(Pointer_File, &Length) != 0)
+				{
+					LOG("Error : failed to read content type.\n");
+					goto Exit;
+				}
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %u bytes.\n", Length);
 				goto Parse_Attached_Files;
 
 			// Date
@@ -555,8 +634,8 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// Status
 			case 0x15:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Status record.\n");
-				// TODO
+				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Status record : %d.\n", Byte);
 				break;
 
 			// Subject
@@ -830,19 +909,17 @@ Parse_Attached_Files:
 		Pointer_Broken_Down_Time->tm_sec);
 	if (UtilityCreateDirectory(String_Temporary) != 0) goto Exit;
 
-	// Bypass all the remaining header files and the complete SMIL presentation section
-	if (MMSReadFileUpToBinaryPattern(Pointer_File, "</smil>\n", 8) != 0)
-	{
-		LOG("Error : could not find the end of the SMIL presentation section in the MMS file.\n");
-		goto Exit;
-	}
+	// Get the amount of attached files
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
+	Attached_Files_Count = Byte; // See WAP-230-WSP-20010705-a chapter 8.5.1 for details about multipart header
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Attached files count : %d.\n", Attached_Files_Count);
 
-	// Retrieve each attached file
-	do
+	// Retrieve each file content
+	for (i = 0; i < Attached_Files_Count; i++)
 	{
-		Result = MMSExtractAttachedFile(Pointer_File, String_Temporary);
-	} while (Result == 0);
-	//if (Result < 0) goto Exit; TODO
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Processing file %d/%d...\n", i + 1, Attached_Files_Count);
+		if (MMSExtractAttachedFile(Pointer_File, String_Temporary) != 0) goto Exit;
+	}
 
 	// Everything went fine
 	Return_Value = 0;
@@ -948,7 +1025,6 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 					LOG("Error : could not download the MMS file \"%s\" (storage location = %d, storage device = %d).\n", String_Temporary, Storage_Location, Storage_Device);
 					goto Exit;
 				}
-
 
 				// Extract payload from MMS
 				sprintf(String_Temporary, "Output/MMS/%s", Pointer_Strings_Storage_Location_Names[Location_Index]);
