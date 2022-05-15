@@ -286,7 +286,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	int File_Descriptor = -1, Return_Value = -1, Size, Result, Read_Index;
 
 	// Try to create the output file first to make sure it can be accessed
-	File_Descriptor = open(Pointer_String_Destination_PC_Path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	File_Descriptor = open(Pointer_String_Destination_PC_Path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (File_Descriptor == -1)
 	{
 		printf("Error : could not create the output file \"%s\" (%s).\n", Pointer_String_Destination_PC_Path, strerror(errno));
