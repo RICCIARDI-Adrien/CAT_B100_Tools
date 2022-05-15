@@ -56,6 +56,12 @@ int main(int argc, char *argv[])
 	TMainCommand Command = MAIN_COMMANDS_COUNT; // This value is invalid, this allows to detect if no known command was provided by the user
 	TFileManagerList List;
 
+	// Display program banner
+	printf("+---------------------------+\n"
+		"|      CAT B100 tools       |\n"
+		"| (C) 2022 Adrien RICCIARDI |\n"
+		"+---------------------------+\n");
+
 	// Check parameters
 	if (argc < 3)
 	{
