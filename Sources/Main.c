@@ -147,7 +147,6 @@ int main(int argc, char *argv[])
 	// Try to create all destination directories
 	if (UtilityCreateDirectory("Output") != 0) goto Exit;
 	if (UtilityCreateDirectory("Output/SMS") != 0) goto Exit;
-	if (UtilityCreateDirectory("Output/MMS") != 0) goto Exit;
 
 	// Run the command
 	switch (Command)

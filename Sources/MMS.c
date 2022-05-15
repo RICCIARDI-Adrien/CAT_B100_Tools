@@ -21,7 +21,7 @@
 // Private constants
 //-------------------------------------------------------------------------------------------------
 /** Allow to turn on or off debug messages. */
-#define MMS_IS_DEBUG_ENABLED 1
+#define MMS_IS_DEBUG_ENABLED 0
 
 /** The local file name and path of the MMS database file. */
 #define MMS_DATABASE_FILE_NAME "Output/MMS/Database.db"
@@ -227,6 +227,27 @@ static int MMSReadWAPVariableLengthUnsignedInteger(FILE *Pointer_File, unsigned 
 }
 
 /** TODO */
+static int MMSReadWAPIntegerValue(FILE *Pointer_File, int *Pointer_Value)
+{
+	unsigned char Byte;
+
+	// The first byte tells whether this is a Short-integer or a Long-integer data type (see WAP-230-WSP-20010705-a specification chapter 8.4.2.3)
+	if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
+
+	// A Short-integer has the most significant bit set and store its data on the 7 remaining bits
+	if (Byte & 0x80) *Pointer_Value = Byte & 0x7F;
+	else
+	{
+		LOG("TODO\n");
+		return -1;
+	}
+
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Integer value : %d.\n", *Pointer_Value);
+
+	return 0;
+}
+
+/** TODO */
 static int MMSReadWAPValueLength(FILE *Pointer_File, unsigned int *Pointer_Length)
 {
 	unsigned char Byte;
@@ -271,23 +292,16 @@ static int MMSReadWAPContentType(FILE *Pointer_File, unsigned int *Pointer_Lengt
 		return -1;
 	}
 	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type field value byte : %d.\n", Byte);
-	if (Byte <= 30)
-	{
-		// The following byte indicates the size of the data bytes (up to 30), get its value
-		//if (fread(&Byte, 1, 1, Pointer_File) != 1) return -1;
-		// This byte indicates the size of the data
-		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %d bytes.\n", Byte);
-		*Pointer_Length = Byte;
 
-		// Read the data and discard it for now
-		if (fread(Buffer, Byte, 1, Pointer_File) != 1)
+	if (Byte < 32)
+	{
+		// The field value is part of the value length data, so go back one byte to allow MMSReadWAPValueLength() to read the correct data
+		if (fseek(Pointer_File, -1, SEEK_CUR) != 0)
 		{
-			LOG("Error : could not read the content type data (%s).\n", strerror(errno));
+			LOG("Error : could not set file position (%s).\n", strerror(errno));
 			return -1;
 		}
-	}
-	else if (Byte == 31)
-	{
+
 		// Get the media type field length
 		if (MMSReadWAPValueLength(Pointer_File, Pointer_Length) != 0)
 		{
@@ -308,7 +322,7 @@ static int MMSReadWAPContentType(FILE *Pointer_File, unsigned int *Pointer_Lengt
 			if (fread(Buffer, *Pointer_Length, 1, Pointer_File) != 1) return -1;
 		}
 	}
-	else if (Byte < 127)
+	else if (Byte < 128)
 	{
 		if (MMSReadStringField(Pointer_File, (char *) Buffer, sizeof(Buffer)) != 0) return -1;
 		*Pointer_Length = strlen((char *) Buffer);
@@ -316,8 +330,12 @@ static int MMSReadWAPContentType(FILE *Pointer_File, unsigned int *Pointer_Lengt
 	}
 	else
 	{
-		LOG("Error : unknown content type first byte 0x%02X, aborting.\n", Byte);
-		return -1;
+		if (fread(&Byte, 1, 1, Pointer_File) != 1)
+		{
+			LOG("Error : could not read the well known media value (%s).\n", strerror(errno));
+			return -1;
+		}
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Well known media value : %d.\n", Byte);
 	}
 
 	return 0;
@@ -360,7 +378,6 @@ int MMSExtractAttachedFile(FILE *Pointer_File, char *Pointer_String_Output_Direc
 		LOG("Error : could not get the file position before reading the content type field (%s).\n", strerror(errno));
 		return -1;
 	}
-	printf("av %ld\n", Position_Before_Content_Type);
 	// Extract content type
 	if (MMSReadWAPContentType(Pointer_File, &Length) != 0)
 	{
@@ -374,7 +391,6 @@ int MMSExtractAttachedFile(FILE *Pointer_File, char *Pointer_String_Output_Direc
 		LOG("Error : could not get the file position after reading the content type field (%s).\n", strerror(errno));
 		return -1;
 	}
-	printf("ap %ld\n", Position_After_Content_Type);
 
 	// Extract headers
 	Length = Headers_Length - (Position_After_Content_Type - Position_Before_Content_Type);
@@ -451,7 +467,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 	unsigned char Byte, Buffer[256]; // A field size is stored on one byte, with 256 bytes even an invalid size can't overflow the buffer
 	size_t Read_Bytes_Count;
 	char String_Temporary[256], String_Sender_Phone_Number[32];
-	int Return_Value = -1, *Pointer_Integer, i, Attached_Files_Count;
+	int Return_Value = -1, *Pointer_Integer, i, Attached_Files_Count, Integer;
 	struct tm *Pointer_Broken_Down_Time;
 	time_t Unix_Timestamp;
 	unsigned int Length;
@@ -814,7 +830,8 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// Limit
 			case 0x33:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Limit record.\n");
+				if (MMSReadWAPIntegerValue(Pointer_File, &Integer) != 0) goto Exit;
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Limit record : %d.\n", Integer);
 				// TODO
 				break;
 

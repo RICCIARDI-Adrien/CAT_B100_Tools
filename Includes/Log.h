@@ -21,6 +21,6 @@
  * @param Is_Enabled Set to 1 to embed the message in the final application, set to 0 to remove the message from the compiled application.
  * @param String_Message The message to display.
  */
-#define LOG_DEBUG(Is_Enabled, String_Message, ...) do { if (Is_Enabled) printf("[%s():%d] " String_Message, __FUNCTION__, __LINE__, ##__VA_ARGS__); } while (0)
+#define LOG_DEBUG(Is_Enabled, String_Message, ...) do { if (Is_Enabled) printf("\033[32m[%s():%d] " String_Message "\033[0m", __FUNCTION__, __LINE__, ##__VA_ARGS__); } while (0)
 
 #endif
