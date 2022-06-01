@@ -24,10 +24,10 @@
 /** All available message storage location. */
 typedef enum
 {
-	SMS_MESSAGE_STORAGE_LOCATION_INBOX = 1,
-	SMS_MESSAGE_STORAGE_LOCATION_SENT = 3,
-	SMS_MESSAGE_STORAGE_LOCATION_DRAFT = 7
-} TSMSMessageStorageLocation;
+	SMS_STORAGE_LOCATION_INBOX = 1,
+	SMS_STORAGE_LOCATION_SENT = 3,
+	SMS_STORAGE_LOCATION_DRAFT = 7
+} TSMSStorageLocation;
 
 /** Hold the meaningful parts of a SMS record. */
 typedef struct
@@ -35,7 +35,7 @@ typedef struct
 	int Is_Data_Present; //!< Tell whether this record holds valid data or if it is empty.
 	char String_Phone_Number[16]; //!< The International Telecommunication Union (ITU) specified that a phone number can't be longer than 15 digits.
 	char String_Text[SMS_TEXT_STRING_MAXIMUM_SIZE]; //!< Contain the decoded message text.
-	TSMSMessageStorageLocation Message_Storage_Location;
+	TSMSStorageLocation Message_Storage_Location;
 	int Record_ID; //!< The record unique identifier (it is made of the two first bytes of the record field).
 	int Records_Count; //!< The amount of records needed to store the whole message.
 	int Record_Number; //!< The number of this record among all needed records (starts from one).
@@ -142,7 +142,7 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 }
 
 /** TODO
- * @param Pointer_Message_Buffer The raw message, it must be of type SMS_MESSAGE_STORAGE_LOCATION_SENT or SMS_MESSAGE_STORAGE_LOCATION_DRAFT.
+ * @param Pointer_Message_Buffer The raw message, it must be of type SMS_STORAGE_LOCATION_SENT or SMS_STORAGE_LOCATION_DRAFT.
  * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
  * @return A positive number indicating the offset of the text payload in the message buffer.
  */
@@ -259,7 +259,7 @@ static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, TS
 }
 
 /** TODO
- * @param Pointer_Message_Buffer The raw message, it must be of type SMS_MESSAGE_STORAGE_LOCATION_INBOX.
+ * @param Pointer_Message_Buffer The raw message, it must be of type SMS_STORAGE_LOCATION_INBOX.
  * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
  * @return A positive number indicating the offset of the text payload in the message buffer.
  */
@@ -400,7 +400,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	static unsigned char Temporary_Buffer[2048];
 	char String_Command[64];
 	int Converted_Data_Size, Text_Payload_Offset, Is_Wide_Character_Encoding, Text_Payload_Bytes_Count;
-	TSMSMessageStorageLocation Message_Storage_Location;
+	TSMSStorageLocation Message_Storage_Location;
 
 	// Send the command
 	sprintf(String_Command, "AT+EMGR=%d", SMS_Number);
@@ -431,14 +431,14 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	if (Converted_Data_Size < 0) return -1;
 
 	// Sent and draft messages share the same header format
-	if ((Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_SENT) || (Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_DRAFT))
+	if ((Message_Storage_Location == SMS_STORAGE_LOCATION_SENT) || (Message_Storage_Location == SMS_STORAGE_LOCATION_DRAFT))
 	{
 		// Retrieve all useful information from the message header
 		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
 		if (Text_Payload_Offset < 0) return -1;
 	}
 	// Inbox messages use a longer header
-	else if (Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_INBOX)
+	else if (Message_Storage_Location == SMS_STORAGE_LOCATION_INBOX)
 	{
 		// Retrieve all useful information from the message header
 		Text_Payload_Offset = SMSDecodeLongHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
@@ -485,13 +485,13 @@ static int SMSWriteOutputMessageInformation(FILE *Pointer_Output_File, TSMSRecor
 	char String_Temporary[256], String_Temporary_2[32];
 
 	// Write phone number
-	if (Pointer_SMS_Record->Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_INBOX) strcpy(String_Temporary, "From : ");
+	if (Pointer_SMS_Record->Message_Storage_Location == SMS_STORAGE_LOCATION_INBOX) strcpy(String_Temporary, "From : ");
 	else strcpy(String_Temporary, "To : ");
 	strcat(String_Temporary, Pointer_SMS_Record->String_Phone_Number);
 	strcat(String_Temporary, "\n");
 
 	// Write date if any
-	if (Pointer_SMS_Record->Message_Storage_Location == SMS_MESSAGE_STORAGE_LOCATION_INBOX)
+	if (Pointer_SMS_Record->Message_Storage_Location == SMS_STORAGE_LOCATION_INBOX)
 	{
 		sprintf(String_Temporary_2, "Date : %04d-%02d-%02d %02d:%02d:%02d\n", Pointer_SMS_Record->Date_Year, Pointer_SMS_Record->Date_Month, Pointer_SMS_Record->Date_Day, Pointer_SMS_Record->Time_Hour, Pointer_SMS_Record->Time_Minutes, Pointer_SMS_Record->Time_Seconds);
 		strcat(String_Temporary, String_Temporary_2);
@@ -532,13 +532,13 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 			printf("Message storage location : ");
 			switch (SMS_Records[i - 1].Message_Storage_Location)
 			{
-				case SMS_MESSAGE_STORAGE_LOCATION_DRAFT:
+				case SMS_STORAGE_LOCATION_DRAFT:
 					printf("draft\n");
 					break;
-				case SMS_MESSAGE_STORAGE_LOCATION_INBOX:
+				case SMS_STORAGE_LOCATION_INBOX:
 					printf("inbox\n");
 					break;
-				case SMS_MESSAGE_STORAGE_LOCATION_SENT:
+				case SMS_STORAGE_LOCATION_SENT:
 					printf("sent\n");
 					break;
 			}
@@ -582,15 +582,15 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 		// Select the correct output file
 		switch (Pointer_SMS_Record->Message_Storage_Location)
 		{
-			case SMS_MESSAGE_STORAGE_LOCATION_INBOX:
+			case SMS_STORAGE_LOCATION_INBOX:
 				Pointer_File = Pointer_File_Inbox;
 				break;
 
-			case SMS_MESSAGE_STORAGE_LOCATION_SENT:
+			case SMS_STORAGE_LOCATION_SENT:
 				Pointer_File = Pointer_File_Sent;
 				break;
 
-			case SMS_MESSAGE_STORAGE_LOCATION_DRAFT:
+			case SMS_STORAGE_LOCATION_DRAFT:
 				Pointer_File = Pointer_File_Draft;
 				break;
 
