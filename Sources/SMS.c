@@ -4,6 +4,7 @@
  */
 #include <AT_Command.h>
 #include <errno.h>
+#include <Log.h>
 #include <SMS.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +13,9 @@
 //-------------------------------------------------------------------------------------------------
 // Private constants
 //-------------------------------------------------------------------------------------------------
+/** Allow to turn on or off debug messages. */
+#define SMS_IS_DEBUG_ENABLED 1
+
 /** The size in bytes of the buffer holding a SMS text. */
 #define SMS_TEXT_STRING_MAXIMUM_SIZE 512
 
@@ -141,228 +145,199 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 	UtilityConvertString(Pointer_String_Custom_Character_Set_Text, Pointer_String_Converted_Text, UTILITY_CHARACTER_SET_WINDOWS_1252, UTILITY_CHARACTER_SET_UTF8, 0, SMS_TEXT_STRING_MAXIMUM_SIZE);
 }
 
-/** TODO
- * @param Pointer_Message_Buffer The raw message, it must be of type SMS_STORAGE_LOCATION_SENT or SMS_STORAGE_LOCATION_DRAFT.
- * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
- * @return A positive number indicating the offset of the text payload in the message buffer.
+/** Extract the phone number from an ETSI GSM 03.38 version 5.3.0 address field (see paragraph 9.1.2.5).
+ * @param Pointer_Pointer_Message_Buffer On input, the pointer must be initialized with the position in the message buffer that corresponds to the beginning of the address field. On output, the pointer is updated with the amount of read bytes and targets the data right after the address field.
+ * @param Pointer_Text_Payload_Offset On input, the pointer must be initialized with the current text payload offset value. On output, this value is updated accordingly.
+ * @param Pointer_SMS_Record On output, the phone number is filled.
  */
-static int SMSDecodeShortHeaderMessage(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
+static void SMSExtractHeaderPhoneNumber(unsigned char **Pointer_Pointer_Message_Buffer, int *Pointer_Text_Payload_Offset, TSMSRecord *Pointer_SMS_Record)
 {
-	int Phone_Number_Length, Is_Least_Significant_Nibble_Selected = 1, i, Text_Payload_Offset = 0, Is_Stored_On_Multiple_Records;
-	char Digit, *Pointer_String_Phone_Number;
-	unsigned char Byte;
+	unsigned char *Pointer_Message_Buffer = *Pointer_Pointer_Message_Buffer;
+	char *Pointer_String_Phone_Number = Pointer_SMS_Record->String_Phone_Number, Digit;
+	int Phone_Number_Length, i, Is_Least_Significant_Nibble_Selected = 1, Text_Payload_Offset = 0;
 
-	// Bypass currently unknown bytes
-	Pointer_Message_Buffer += 2;
+	// Retrieve Address-Length
+	Phone_Number_Length = *Pointer_Message_Buffer;
+	Pointer_Message_Buffer += 2; // Bypass in the same time the Type-of-Address byte
 	Text_Payload_Offset += 2;
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Phone number length : %d bytes.\n", Phone_Number_Length);
 
-	// Is this message stored on multiple records ?
-	Byte = *Pointer_Message_Buffer & 0xF0;
-	if (Byte == 0x90) Is_Stored_On_Multiple_Records = 0;
-	else if (Byte == 0xD0) Is_Stored_On_Multiple_Records = 1;
+	// Is the phone number provided ?
+	if (Phone_Number_Length > 0)
+	{
+		// Extract the phone number (each digit is stored in a byte nibble)
+		for (i = 0; i < Phone_Number_Length; i++)
+		{
+			// Extract the correct digit from the byte
+			if (Is_Least_Significant_Nibble_Selected) Digit = *Pointer_Message_Buffer & 0x0F;
+			else Digit = *Pointer_Message_Buffer >> 4;
+
+			// Add the digit to the string
+			Digit += '0'; // Convert the digit to ASCII
+			*Pointer_String_Phone_Number = Digit;
+			Pointer_String_Phone_Number++;
+
+			// Select the next nibble to extract
+			if (Is_Least_Significant_Nibble_Selected) Is_Least_Significant_Nibble_Selected = 0;
+			else
+			{
+				Is_Least_Significant_Nibble_Selected = 1;
+				Pointer_Message_Buffer++; // Both digits have been extracted from the byte, go to next byte
+			}
+		}
+
+		// Adjust read bytes count
+		Text_Payload_Offset += Phone_Number_Length / 2;
+		if (Phone_Number_Length & 1) // Take into account the one more byte if the phone number length is odd
+		{
+			Pointer_Message_Buffer++;
+			Text_Payload_Offset++;
+		}
+
+		// Terminate the string
+		*Pointer_String_Phone_Number = 0;
+	}
+	// No phone number was provided, make sure a string is present to tell that
+	else strcpy(Pointer_String_Phone_Number, "<Unspecified>");
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Phone number : %s.\n", Pointer_SMS_Record->String_Phone_Number);
+
+	// Adjust the amount of read bytes from the buffer
+	*Pointer_Pointer_Message_Buffer = Pointer_Message_Buffer;
+	*Pointer_Text_Payload_Offset += Text_Payload_Offset;
+}
+
+/** Parse the SMS PDU header according to ETSI GSM 03.40 version 5.3.0 and ETSI GSM 03.38 version 5.3.0 documents. Extract useful information and find the text payload location and encoding.
+ * @param Pointer_Message_Buffer The raw message, as downloaded from the phone.
+ * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
+ * @param Pointer_Is_Wide_Character_Encoding On output, tell whether the message text uses UTF-16 encoding (if set to 1) or 7-bit characters (if set to 0).
+ * @param Pointer_Text_Bytes_Count On output, contain the size in bytes of the decoded text.
+ * @return -1 on error,
+ * @return On success, a positive number indicating the offset of the text payload in the message buffer.
+ * @note The SMS format is specified by ETSI GSM 03.40 version 5.3.0 document.
+ */
+static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
+{
+	unsigned char Byte;
+	int Text_Payload_Offset = 0, Is_SMS_Deliver_Message_Type, Is_Stored_On_Multiple_Records, Validity_Period_Format = 0;
+
+	// Bypass the SMSC information if this is a SMS-DELIVER message (see http://www.gsm-modem.de/sms-pdu-mode.html)
+	Byte = *Pointer_Message_Buffer;
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMSC length : %d bytes.\n", Byte);
+	Pointer_Message_Buffer += Byte;
+	Text_Payload_Offset += Byte;
+
+	// Bypass a currently unknown byte
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Extract the Message-Type-Indicator
+	Byte = *Pointer_Message_Buffer & 0x03;
+	if (Byte == 0) Is_SMS_Deliver_Message_Type = 1;
+	else if (Byte == 1) Is_SMS_Deliver_Message_Type = 0;
 	else
 	{
-		printf("Error : unknown multiple record indicators in short header message.\n");
+		LOG("Unsupported SMS Message-Type-Indicator : 0x%02X.\n", Byte);
+		return -1;
+	}
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS Message-Type-Indicator : %s.\n", Is_SMS_Deliver_Message_Type ? "SMS-DELIVER" : "SMS-SUBMIT");
+
+	// Is the validity period field present on a SMS-SUBMIT message ?
+	if (!Is_SMS_Deliver_Message_Type)
+	{
+		Validity_Period_Format = (*Pointer_Message_Buffer >> 3) & 0x03;
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Validity period format : %d.\n", Validity_Period_Format);
+	}
+
+	// Is this message stored on multiple records ?
+	Byte = *Pointer_Message_Buffer;
+	if (Is_SMS_Deliver_Message_Type)
+	{
+		if (Byte & 0x40) Is_Stored_On_Multiple_Records = 1;
+		else Is_Stored_On_Multiple_Records = 0;
+		Pointer_Message_Buffer++;
+		Text_Payload_Offset++;
+	}
+	else
+	{
+		Byte &= 0xF0;
+		if (Byte == 0x90) Is_Stored_On_Multiple_Records = 0;
+		else if (Byte == 0xD0) Is_Stored_On_Multiple_Records = 1;
+		else
+		{
+			LOG("Error : unknown multiple record indicators.\n");
+			return -1;
+		}
+		Pointer_Message_Buffer += 2; // Also bypass Message-Reference byte
+		Text_Payload_Offset += 2;
+	}
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Is message stored on multiple records : %s.\n", Is_Stored_On_Multiple_Records ? "yes" : "no");
+
+	// Extract Originating-Address for SMS-DELIVER, or Destination-Address for SMS-SUBMIT
+	SMSExtractHeaderPhoneNumber(&Pointer_Message_Buffer, &Text_Payload_Offset, Pointer_SMS_Record);
+
+	// Bypass Protocol-Identifier byte
+	Pointer_Message_Buffer++;
+	Text_Payload_Offset++;
+
+	// Extract Data-Coding-Scheme to determine whether the text is 7-bit ASCII encoded or UTF-16 encoded (see ETSI GSM 03.38 version 5.3.0 document for more details)
+	Byte = (*Pointer_Message_Buffer >> 2) & 0x03;
+	if (Byte == 0) *Pointer_Is_Wide_Character_Encoding = 0; // Default alphabet
+	else if (Byte == 2) *Pointer_Is_Wide_Character_Encoding = 1; // UCS2 (16bit)
+	else
+	{
+		LOG("Error : unsupported Data-Coding-Scheme.\n");
 		return -1;
 	}
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Data coding scheme : %s.\n", *Pointer_Is_Wide_Character_Encoding ? "UCS2 (UTF-16)" : "default alphabet (7 bits)");
 
-	// Bypass currently unknown byte
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Retrieve phone number
-	Pointer_String_Phone_Number = Pointer_SMS_Record->String_Phone_Number;
-	Phone_Number_Length = *Pointer_Message_Buffer;
-	Pointer_Message_Buffer += 2; // Bypass an unknown byte following the phone number length
-	Text_Payload_Offset += 2;
-
-	// Is the phone number provided ?
-	if (Phone_Number_Length > 0)
+	// Extract message reception date and time (Service-Centre-Time-Stamp)
+	if (Is_SMS_Deliver_Message_Type)
 	{
-		// Extract the phone number (each digit is stored in a byte nibble)
-		for (i = 0; i < Phone_Number_Length; i++)
+		// Year
+		Byte = Pointer_Message_Buffer[0];
+		Pointer_SMS_Record->Date_Year = 2000 + ((Byte & 0x0F) * 10) + (Byte >> 4);
+		// Month
+		Byte = Pointer_Message_Buffer[1];
+		Pointer_SMS_Record->Date_Month = ((Byte & 0x0F) * 10) + (Byte >> 4);
+		// Day
+		Byte = Pointer_Message_Buffer[2];
+		Pointer_SMS_Record->Date_Day = ((Byte & 0x0F) * 10) + (Byte >> 4);
+		// Hour
+		Byte = Pointer_Message_Buffer[3];
+		Pointer_SMS_Record->Time_Hour = ((Byte & 0x0F) * 10) + (Byte >> 4);
+		// Minutes
+		Byte = Pointer_Message_Buffer[4];
+		Pointer_SMS_Record->Time_Minutes = ((Byte & 0x0F) * 10) + (Byte >> 4);
+		// Seconds
+		Byte = Pointer_Message_Buffer[5];
+		Pointer_SMS_Record->Time_Seconds = ((Byte & 0x0F) * 10) + (Byte >> 4);
+		Pointer_Message_Buffer += 7; // Also bypass the time zone byte
+		Text_Payload_Offset += 7;
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Message reception date : %04d-%02d-%02d %02d:%02d:%02d.\n", Pointer_SMS_Record->Date_Year, Pointer_SMS_Record->Date_Month, Pointer_SMS_Record->Date_Day, Pointer_SMS_Record->Time_Hour, Pointer_SMS_Record->Time_Minutes, Pointer_SMS_Record->Time_Seconds);
+	}
+	else if (Validity_Period_Format != 0)
+	{
+		if (Validity_Period_Format == 2)
 		{
-			// Extract the correct digit from the byte
-			if (Is_Least_Significant_Nibble_Selected) Digit = *Pointer_Message_Buffer & 0x0F;
-			else Digit = *Pointer_Message_Buffer >> 4;
-
-			// Add the digit to the string
-			Digit += '0'; // Convert the digit to ASCII
-			*Pointer_String_Phone_Number = Digit;
-			Pointer_String_Phone_Number++;
-
-			// Select the next nibble to extract
-			if (Is_Least_Significant_Nibble_Selected) Is_Least_Significant_Nibble_Selected = 0;
-			else
-			{
-				Is_Least_Significant_Nibble_Selected = 1;
-				Pointer_Message_Buffer++; // Both digits have been extracted from the byte, go to next byte
-			}
-		}
-		// Adjust read bytes count
-		Text_Payload_Offset += Phone_Number_Length / 2;
-		if (Phone_Number_Length & 1) // Take into account the one more byte if the phone number length is odd
-		{
+			// Bypass relative validity period
 			Pointer_Message_Buffer++;
 			Text_Payload_Offset++;
 		}
-
-		// Terminate the string
-		*Pointer_String_Phone_Number = 0;
+		else
+		{
+			// Bypass absolute validity period
+			Pointer_Message_Buffer += 7;
+			Text_Payload_Offset += 7;
+		}
 	}
-	// No phone number was provided, make sure a string is present to tell that
-	else strcpy(Pointer_String_Phone_Number, "<Unspecified>");
 
-	// Bypass unknown byte
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Determine whether the text is 7-bit ASCII encoded or UTF-16 encoded
-	if (*Pointer_Message_Buffer & 0x08) *Pointer_Is_Wide_Character_Encoding = 1;
-	else *Pointer_Is_Wide_Character_Encoding = 0;
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Bypass unknown byte
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Retrieve the text size in bytes
+	// Retrieve the text size in bytes (User-Data-Length)
 	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
-
-	// Retrieve record ID if any
-	if (Is_Stored_On_Multiple_Records)
-	{
-		// Bypass the initial 0x05 byte, which might represent the record ID field size in bytes, and the following unknown byte
-		Pointer_Message_Buffer += 2;
-		Text_Payload_Offset += 2;
-
-		// Decode the record 4 bytes
-		Pointer_SMS_Record->Record_ID = (Pointer_Message_Buffer[0] << 8) | Pointer_Message_Buffer[1];
-		Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[2];
-		Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[3];
-		Pointer_Message_Buffer += 4;
-		Text_Payload_Offset += 4;
-	}
-	// Make sure values are coherent if there is only a single record (in this case there is not record 4 bytes field
-	else
-	{
-		Pointer_SMS_Record->Records_Count = 1;
-		Pointer_SMS_Record->Record_Number = 1; // Record numbers start from 1
-	}
-
-	return Text_Payload_Offset;
-}
-
-/** TODO
- * @param Pointer_Message_Buffer The raw message, it must be of type SMS_STORAGE_LOCATION_INBOX.
- * @param Pointer_SMS_Record On output, fill most of the information of the decoded SMS record.
- * @return A positive number indicating the offset of the text payload in the message buffer.
- */
-static int SMSDecodeLongHeaderMessage(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
-{
-	int Phone_Number_Length, Is_Least_Significant_Nibble_Selected = 1, i, Text_Payload_Offset = 0, Is_Stored_On_Multiple_Records;
-	char Digit, *Pointer_String_Phone_Number;
-	unsigned char Byte;
-
-	// Bypass currently unknown bytes
-	Pointer_Message_Buffer += 8;
-	Text_Payload_Offset += 8;
-
-	// Is this message stored on multiple records ?
-	Byte = *Pointer_Message_Buffer;
-	if (Byte & 0x40) Is_Stored_On_Multiple_Records = 1;
-	else Is_Stored_On_Multiple_Records = 0;
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Retrieve phone number
-	Pointer_String_Phone_Number = Pointer_SMS_Record->String_Phone_Number;
-	Phone_Number_Length = *Pointer_Message_Buffer;
-	Pointer_Message_Buffer += 2; // Bypass an unknown byte following the phone number length
-	Text_Payload_Offset += 2;
-
-	// Is the phone number provided ?
-	if (Phone_Number_Length > 0)
-	{
-		// Extract the phone number (each digit is stored in a byte nibble)
-		for (i = 0; i < Phone_Number_Length; i++)
-		{
-			// Extract the correct digit from the byte
-			if (Is_Least_Significant_Nibble_Selected) Digit = *Pointer_Message_Buffer & 0x0F;
-			else Digit = *Pointer_Message_Buffer >> 4;
-
-			// Add the digit to the string
-			Digit += '0'; // Convert the digit to ASCII
-			*Pointer_String_Phone_Number = Digit;
-			Pointer_String_Phone_Number++;
-
-			// Select the next nibble to extract
-			if (Is_Least_Significant_Nibble_Selected) Is_Least_Significant_Nibble_Selected = 0;
-			else
-			{
-				Is_Least_Significant_Nibble_Selected = 1;
-				Pointer_Message_Buffer++; // Both digits have been extracted from the byte, go to next byte
-			}
-		}
-		// Adjust read bytes count
-		Text_Payload_Offset += Phone_Number_Length / 2;
-		if (Phone_Number_Length & 1) // Take into account the one more byte if the phone number length is odd
-		{
-			Pointer_Message_Buffer++;
-			Text_Payload_Offset++;
-		}
-
-		// Terminate the string
-		*Pointer_String_Phone_Number = 0;
-	}
-	// No phone number was provided, make sure a string is present to tell that
-	else strcpy(Pointer_String_Phone_Number, "<Unspecified>");
-
-	// Bypass unknown byte
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Determine whether the text is 7-bit ASCII encoded or UTF-16 encoded
-	if (*Pointer_Message_Buffer & 0x08) *Pointer_Is_Wide_Character_Encoding = 1;
-	else *Pointer_Is_Wide_Character_Encoding = 0;
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Extract message reception date and time
-	// Year
-	Byte = Pointer_Message_Buffer[0];
-	Pointer_SMS_Record->Date_Year = 2000 + ((Byte & 0x0F) * 10) + (Byte >> 4);
-	// Month
-	Byte = Pointer_Message_Buffer[1];
-	Pointer_SMS_Record->Date_Month = ((Byte & 0x0F) * 10) + (Byte >> 4);
-	// Day
-	Byte = Pointer_Message_Buffer[2];
-	Pointer_SMS_Record->Date_Day = ((Byte & 0x0F) * 10) + (Byte >> 4);
-	// Hour
-	Byte = Pointer_Message_Buffer[3];
-	Pointer_SMS_Record->Time_Hour = ((Byte & 0x0F) * 10) + (Byte >> 4);
-	// Minutes
-	Byte = Pointer_Message_Buffer[4];
-	Pointer_SMS_Record->Time_Minutes = ((Byte & 0x0F) * 10) + (Byte >> 4);
-	// Seconds
-	Byte = Pointer_Message_Buffer[5];
-	Pointer_SMS_Record->Time_Seconds = ((Byte & 0x0F) * 10) + (Byte >> 4);
-	Pointer_Message_Buffer += 6;
-	Text_Payload_Offset += 6;
-
-	// Bypass currently unknown byte
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
-
-	// Retrieve the text size in bytes
-	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
-	Pointer_Message_Buffer++;
-	Text_Payload_Offset++;
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Data length : %d bytes.\n", *Pointer_Text_Bytes_Count);
 
 	// Retrieve record ID if any
 	if (Is_Stored_On_Multiple_Records)
@@ -430,25 +405,9 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	Converted_Data_Size = ATCommandConvertHexadecimalToBinary(String_Temporary, Temporary_Buffer, sizeof(Temporary_Buffer));
 	if (Converted_Data_Size < 0) return -1;
 
-	// Sent and draft messages share the same header format
-	if ((Message_Storage_Location == SMS_STORAGE_LOCATION_SENT) || (Message_Storage_Location == SMS_STORAGE_LOCATION_DRAFT))
-	{
-		// Retrieve all useful information from the message header
-		Text_Payload_Offset = SMSDecodeShortHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
-		if (Text_Payload_Offset < 0) return -1;
-	}
-	// Inbox messages use a longer header
-	else if (Message_Storage_Location == SMS_STORAGE_LOCATION_INBOX)
-	{
-		// Retrieve all useful information from the message header
-		Text_Payload_Offset = SMSDecodeLongHeaderMessage(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
-		if (Text_Payload_Offset < 0) return -1;
-	}
-	else
-	{
-		printf("Error : unknown SMS message storage location %d.\n", Message_Storage_Location);
-		return -1;
-	}
+	// Retrieve all useful information from the message header
+	Text_Payload_Offset = SMSDecodeRecordHeader(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
+	if (Text_Payload_Offset < 0) return -1;
 
 	// Decode text
 	if (Is_Wide_Character_Encoding)
