@@ -547,6 +547,9 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 		printf("\n");
 	}
 
+	// Create output directories
+	if (UtilityCreateDirectory("Output/SMS") != 0) goto Exit;
+
 	// Create all needed files
 	// Inbox
 	Pointer_File_Inbox = fopen("Output/SMS/Inbox.txt", "w");

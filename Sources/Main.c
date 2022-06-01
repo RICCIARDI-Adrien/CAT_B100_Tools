@@ -150,9 +150,8 @@ int main(int argc, char *argv[])
 		goto Exit;
 	}
 
-	// Try to create all destination directories
+	// Try to create the root destination directory
 	if (UtilityCreateDirectory("Output") != 0) goto Exit;
-	if (UtilityCreateDirectory("Output/SMS") != 0) goto Exit;
 
 	// Run the command
 	switch (Command)
