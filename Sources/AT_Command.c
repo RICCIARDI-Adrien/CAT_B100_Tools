@@ -19,7 +19,7 @@ static int ATCommandGetHexadecimalNibbleBinaryValue(char Hexadecimal_Nibble)
 	if ((Hexadecimal_Nibble >= '0') && (Hexadecimal_Nibble <= '9')) return Hexadecimal_Nibble - '0';
 
 	// Convert letters
-	if ((Hexadecimal_Nibble >= 'A') || (Hexadecimal_Nibble <= 'F')) return Hexadecimal_Nibble - 'A' + 10;
+	if ((Hexadecimal_Nibble >= 'A') && (Hexadecimal_Nibble <= 'F')) return Hexadecimal_Nibble - 'A' + 10;
 
 	// This is an invalid hexadecimal character
 	return -1;

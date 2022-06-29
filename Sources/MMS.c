@@ -48,6 +48,14 @@ typedef enum
 	MMS_STORAGE_DEVICE_SD_CARD = 4
 } TMMSStorageDevice;
 
+/** All supported message types (see OMA-TS-MMS_ENC-V1_3 chapter 7.3.30). */
+typedef enum
+{
+	MMS_MESSAGE_TYPE_SEND_REQUEST = 128,
+	MMS_MESSAGE_TYPE_RETRIEVE_CONFIRMATION = 132,
+	MMS_MESSAGE_TYPE_DELIVERY_INDICATION = 134
+} TMMSMessageType;
+
 /** A record in the MMS information database. */
 typedef struct __attribute__((packed))
 {
@@ -471,6 +479,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 	struct tm *Pointer_Broken_Down_Time;
 	time_t Unix_Timestamp;
 	unsigned int Length;
+	TMMSMessageType Message_Type;
 
 	// Try to open the file
 	Pointer_File = fopen(Pointer_String_Raw_MMS_File_Path, "r");
@@ -597,6 +606,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			// Message type
 			case 0x0C:
 				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
+				Message_Type = Byte;
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Message type record : %d.\n", Byte);
 				break;
 
@@ -911,6 +921,14 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 				LOG("Unknown field : %d.\n", Byte);
 				goto Exit;
 		}
+	}
+
+	// Do not parse indication messages, they do not embed any attachment
+	if (Message_Type == MMS_MESSAGE_TYPE_DELIVERY_INDICATION)
+	{
+		printf("This message is a delivery indication, ignoring it.\n");
+		Return_Value = 0;
+		goto Exit;
 	}
 
 Parse_Attached_Files:
