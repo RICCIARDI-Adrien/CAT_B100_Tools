@@ -9,3 +9,6 @@ all:
 
 debug: CFLAGS += -g
 debug: all
+
+cppcheck:
+	cppcheck -I Includes Sources

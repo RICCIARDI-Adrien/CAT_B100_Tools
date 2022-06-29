@@ -334,7 +334,7 @@ static int MMSReadWAPContentType(FILE *Pointer_File, unsigned int *Pointer_Lengt
 	{
 		if (MMSReadStringField(Pointer_File, (char *) Buffer, sizeof(Buffer)) != 0) return -1;
 		*Pointer_Length = strlen((char *) Buffer);
-		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %d bytes, Content type string : \"%s\"\n", *Pointer_Length, (char *) Buffer);
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Content type length : %u bytes, Content type string : \"%s\"\n", *Pointer_Length, (char *) Buffer);
 	}
 	else
 	{
