@@ -14,7 +14,7 @@
 // Private constants
 //-------------------------------------------------------------------------------------------------
 /** Allow to turn on or off debug messages. */
-#define SMS_IS_DEBUG_ENABLED 1
+#define SMS_IS_DEBUG_ENABLED 0
 
 /** The size in bytes of the buffer holding a SMS text. */
 #define SMS_TEXT_STRING_MAXIMUM_SIZE 512
@@ -618,9 +618,16 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 				// Cache searched record access
 				Pointer_Searched_SMS_Record = &SMS_Records[j];
 
-				// Append the next record text
+				// Find the message next record
 				if ((Pointer_Searched_SMS_Record->Records_Count > 1) && (Pointer_Searched_SMS_Record->Record_ID == Pointer_SMS_Record->Record_ID) && (Pointer_Searched_SMS_Record->Record_Number == Current_Record_Number))
 				{
+					// Add some more checks because the record ID is stored on one byte only and this can lead to collisions pretty fast
+					// The message storage location must be identical
+					if (Pointer_Searched_SMS_Record->Message_Storage_Location != Pointer_SMS_Record->Message_Storage_Location) continue;
+					// The phone number must be identical
+					if (strncmp(Pointer_Searched_SMS_Record->String_Phone_Number, Pointer_SMS_Record->String_Phone_Number, sizeof(Pointer_Searched_SMS_Record->String_Phone_Number)) != 0) continue;
+
+					// Append the next record text
 					fprintf(Pointer_File, "%s", Pointer_Searched_SMS_Record->String_Text);
 					Current_Record_Number++;
 
