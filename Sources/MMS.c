@@ -51,9 +51,10 @@ typedef enum
 /** All supported message types (see OMA-TS-MMS_ENC-V1_3 chapter 7.3.30). */
 typedef enum
 {
-	MMS_MESSAGE_TYPE_SEND_REQUEST = 128,
-	MMS_MESSAGE_TYPE_RETRIEVE_CONFIRMATION = 132,
-	MMS_MESSAGE_TYPE_DELIVERY_INDICATION = 134
+	MMS_MESSAGE_TYPE_SEND_REQUEST = 128, //<! This field is named "m-send-req" in the specification.
+	MMS_MESSAGE_TYPE_RETRIEVE_CONFIRMATION = 132, //<! This field is named "m-retrieve-conf" in the specification.
+	MMS_MESSAGE_TYPE_DELIVERY_INDICATION = 134, //<! This field is named "m-delivery-ind" in the specification.
+	MMS_MESSAGE_TYPE_READ_ORIGINATING_INDICATION = 136 //<! This field is named "m-read-orig-ind" in the specification.
 } TMMSMessageType;
 
 /** A record in the MMS information database. */
@@ -696,8 +697,13 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 
 			// Read status
 			case 0x1B:
-				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Read status record.\n");
-				// TODO
+				if (fread(&Byte, 1, 1, Pointer_File) != 1) goto Exit;
+				if ((Byte < 128) || (Byte > 129))
+				{
+					LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found invalid Read status record : %d.\n", Byte);
+					goto Exit;
+				}
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Read status record : %s.\n", Byte == 128 ? "message has been read" : "message has been deleted without being read");
 				break;
 
 			// Reply charging
@@ -924,9 +930,23 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 	}
 
 	// Do not parse indication messages, they do not embed any attachment
-	if (Message_Type == MMS_MESSAGE_TYPE_DELIVERY_INDICATION)
+	if ((Message_Type == MMS_MESSAGE_TYPE_DELIVERY_INDICATION) || (Message_Type == MMS_MESSAGE_TYPE_READ_ORIGINATING_INDICATION))
 	{
-		printf("This message is a delivery indication, ignoring it.\n");
+		// Display the appropriate message type
+		switch (Message_Type)
+		{
+			case MMS_MESSAGE_TYPE_DELIVERY_INDICATION:
+				printf("This message is a delivery indication, ignoring it.\n");
+				break;
+
+			case MMS_MESSAGE_TYPE_READ_ORIGINATING_INDICATION:
+				printf("This message is a read originating indication, ignoring it.\n");
+				break;
+
+			default:
+				LOG("Unknown message type %d.\n", Message_Type);
+				goto Parse_Attached_Files;
+		}
 		Return_Value = 0;
 		goto Exit;
 	}
