@@ -217,21 +217,22 @@ static void SMSExtractHeaderPhoneNumber(unsigned char **Pointer_Pointer_Message_
  */
 static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSRecord *Pointer_SMS_Record, int *Pointer_Is_Wide_Character_Encoding, int *Pointer_Text_Bytes_Count)
 {
-	unsigned char Byte;
-	int Text_Payload_Offset = 0, Is_SMS_Deliver_Message_Type, Is_Stored_On_Multiple_Records, Validity_Period_Format = 0;
+	unsigned char Byte, First_Message_Byte;
+	int Text_Payload_Offset = 0, Is_SMS_Deliver_Message_Type, Validity_Period_Format = 0;
 
 	// Bypass the SMSC information if this is a SMS-DELIVER message (see http://www.gsm-modem.de/sms-pdu-mode.html)
 	Byte = *Pointer_Message_Buffer;
 	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMSC length : %d bytes.\n", Byte);
-	Pointer_Message_Buffer += Byte;
-	Text_Payload_Offset += Byte;
+	Pointer_Message_Buffer += Byte + 1; // Also add 1 to bypass the SMSC length byte
+	Text_Payload_Offset += Byte + 1;
 
-	// Bypass a currently unknown byte
+	// Cache the first message byte (the one following the SMSC) as it will be used several times
+	First_Message_Byte = *Pointer_Message_Buffer;
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
 
 	// Extract the Message-Type-Indicator
-	Byte = *Pointer_Message_Buffer & 0x03;
+	Byte = First_Message_Byte & 0x03;
 	if (Byte == 0) Is_SMS_Deliver_Message_Type = 1;
 	else if (Byte == 1) Is_SMS_Deliver_Message_Type = 0;
 	else
@@ -244,33 +245,16 @@ static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSReco
 	// Is the validity period field present on a SMS-SUBMIT message ?
 	if (!Is_SMS_Deliver_Message_Type)
 	{
-		Validity_Period_Format = (*Pointer_Message_Buffer >> 3) & 0x03;
+		Validity_Period_Format = (First_Message_Byte >> 3) & 0x03;
 		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Validity period format : %d.\n", Validity_Period_Format);
 	}
 
-	// Is this message stored on multiple records ?
-	Byte = *Pointer_Message_Buffer;
-	if (Is_SMS_Deliver_Message_Type)
+	// Bypass the Message-Reference byte
+	if (!Is_SMS_Deliver_Message_Type)
 	{
-		if (Byte & 0x40) Is_Stored_On_Multiple_Records = 1;
-		else Is_Stored_On_Multiple_Records = 0;
 		Pointer_Message_Buffer++;
 		Text_Payload_Offset++;
 	}
-	else
-	{
-		Byte &= 0xF0;
-		if (Byte == 0x90) Is_Stored_On_Multiple_Records = 0;
-		else if (Byte == 0xD0) Is_Stored_On_Multiple_Records = 1;
-		else
-		{
-			LOG("Error : unknown multiple record indicators.\n");
-			return -1;
-		}
-		Pointer_Message_Buffer += 2; // Also bypass Message-Reference byte
-		Text_Payload_Offset += 2;
-	}
-	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Is message stored on multiple records : %s.\n", Is_Stored_On_Multiple_Records ? "yes" : "no");
 
 	// Extract Originating-Address for SMS-DELIVER, or Destination-Address for SMS-SUBMIT
 	SMSExtractHeaderPhoneNumber(&Pointer_Message_Buffer, &Text_Payload_Offset, Pointer_SMS_Record);
@@ -337,21 +321,48 @@ static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSReco
 	*Pointer_Text_Bytes_Count = *Pointer_Message_Buffer;
 	Pointer_Message_Buffer++;
 	Text_Payload_Offset++;
-	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Data length : %d bytes.\n", *Pointer_Text_Bytes_Count);
 
-	// Retrieve record ID if any
-	if (Is_Stored_On_Multiple_Records)
+	// Is the User-Data-Header-Indicator present (see ETSI GSM 03.40 version 5.3.0 chapter 9.2.3.23 and https://en.wikipedia.org/wiki/User_Data_Header) ?
+	if (First_Message_Byte & 0x40)
 	{
-		// Bypass the initial 0x05 byte, which might represent the record ID field size in bytes, and the following unknown byte
-		Pointer_Message_Buffer += 2;
-		Text_Payload_Offset += 2;
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS User-Data-Header-Indicator is present.\n");
 
-		// Decode the record 4 bytes
-		Pointer_SMS_Record->Record_ID = (Pointer_Message_Buffer[0] << 8) | Pointer_Message_Buffer[1];
-		Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[2];
-		Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[3];
-		Pointer_Message_Buffer += 4;
-		Text_Payload_Offset += 4;
+		// Only the concatenated short messages facility is supported for now (see ETSI GSM 03.40 version 5.3.0 chapter 9.2.3.24.1)
+		// Make sure the User Data Header Length is what expected
+		if (*Pointer_Message_Buffer != 5)
+		{
+			LOG("Error : unsupported User Data Header Length : %d.\n", *Pointer_Message_Buffer);
+			return -1;
+		}
+		Pointer_Message_Buffer++;
+		Text_Payload_Offset++;
+		// Make sure the Information Element Identifier is the concatenated short messages one
+		if (*Pointer_Message_Buffer != 0)
+		{
+			LOG("Error : unsupported Information Element Identifier : %d.\n", *Pointer_Message_Buffer);
+			return -1;
+		}
+		Pointer_Message_Buffer++;
+		Text_Payload_Offset++;
+		// Make sure the Length of the Information Element is what expected
+		if (*Pointer_Message_Buffer != 3)
+		{
+			LOG("Error : unsupported Length of the Information Element : %d.\n", *Pointer_Message_Buffer);
+			return -1;
+		}
+		Pointer_Message_Buffer++;
+		Text_Payload_Offset++;
+
+		// Decode the Information Element Data
+		Pointer_SMS_Record->Record_ID = Pointer_Message_Buffer[0];
+		Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[1];
+		Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[2];
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Record ID : 0x%02X, records count : %d, record number : %d.\n", Pointer_SMS_Record->Record_ID, Pointer_SMS_Record->Records_Count, Pointer_SMS_Record->Record_Number);
+		Pointer_Message_Buffer += 3;
+		Text_Payload_Offset += 3;
+
+		// Adjust the data length accordingly
+		*Pointer_Text_Bytes_Count -= 6;
 	}
 	// Make sure values are coherent if there is only a single record (in this case there is not record 4 bytes field
 	else
@@ -360,10 +371,13 @@ static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSReco
 		Pointer_SMS_Record->Record_Number = 1; // Record numbers start from 1
 	}
 
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Data length : %d bytes.\n", *Pointer_Text_Bytes_Count);
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Text payload offset : %d.\n", Text_Payload_Offset);
+
 	return Text_Payload_Offset;
 }
 
-/** TODO
+/** Retrieve an SMS PDU from the phone.
  * @return -3 if the record is empty,
  * @return -2 if the SMS format is not supported yet,
  * @return -1 if an unrecoverable error occurred,
@@ -374,27 +388,46 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	static char String_Temporary[2048];
 	static unsigned char Temporary_Buffer[2048];
 	char String_Command[64];
-	int Converted_Data_Size, Text_Payload_Offset, Is_Wide_Character_Encoding, Text_Payload_Bytes_Count;
+	unsigned char Current_Byte, Next_Byte;
+	int Text_Payload_Offset, Is_Wide_Character_Encoding, Text_Payload_Bytes_Count, Septet_Padding_Bits_Count, i;
 	TSMSStorageLocation Message_Storage_Location;
 
 	// Send the command
 	sprintf(String_Command, "AT+EMGR=%d", SMS_Number);
 	if (ATCommandSendCommand(Serial_Port_ID, String_Command) != 0)
 	{
-		printf("Error : failed to send the AT command to read SMS record %d.\n", SMS_Number);
+		LOG("Error : failed to send the AT command to read SMS record %d.\n", SMS_Number);
 		return -1;
 	}
 
 	// Wait for the information string
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
-	printf("info : %s\n", String_Temporary);
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "AT command answer : \"%s\".\n", String_Temporary);
 	if (strcmp(String_Temporary, "+CMS ERROR: 321") == 0) return -3; // The message storage location is empty
 	if (sscanf(String_Temporary, "+EMGR: %d", (int *) &Message_Storage_Location) != 1) return -1; // Extract message storage location information
 	Pointer_SMS_Record->Message_Storage_Location = Message_Storage_Location;
+	switch (Pointer_SMS_Record->Message_Storage_Location)
+	{
+		case SMS_STORAGE_LOCATION_INBOX:
+			LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Message storage location : inbox.\n");
+			break;
+
+		case SMS_STORAGE_LOCATION_SENT:
+			LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Message storage location : sent.\n");
+			break;
+
+		case SMS_STORAGE_LOCATION_DRAFT:
+			LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Message storage location : draft.\n");
+			break;
+
+		default:
+			LOG("Error : unsupported message storage location %d.\n", Pointer_SMS_Record->Message_Storage_Location);
+			return -3;
+	}
 
 	// Wait for the message content
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
-	printf("hex content : %s\n", String_Temporary);
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Hexadecimal content : %s.\n", String_Temporary);
 
 	// Wait for the standard OK
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Command, sizeof(String_Command)) < 0) return -1; // Recycle "String_Command" variable, wait for empty line before "OK"
@@ -402,8 +435,7 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	if (strcmp(String_Command, "OK") != 0) return -1;
 
 	// Convert all characters to their binary representation to allow processing them
-	Converted_Data_Size = ATCommandConvertHexadecimalToBinary(String_Temporary, Temporary_Buffer, sizeof(Temporary_Buffer));
-	if (Converted_Data_Size < 0) return -1;
+	if (ATCommandConvertHexadecimalToBinary(String_Temporary, Temporary_Buffer, sizeof(Temporary_Buffer)) < 0) return -1;
 
 	// Retrieve all useful information from the message header
 	Text_Payload_Offset = SMSDecodeRecordHeader(Temporary_Buffer, Pointer_SMS_Record, &Is_Wide_Character_Encoding, &Text_Payload_Bytes_Count);
@@ -412,20 +444,45 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 	// Decode text
 	if (Is_Wide_Character_Encoding)
 	{
-		// Quick fix for multi records messages text string trailing characters (TODO find a better solution)
-		if ((Pointer_SMS_Record->Records_Count > 1) && (Text_Payload_Bytes_Count > 6)) Text_Payload_Bytes_Count -= 6;
-
 		// Convert UTF-16 to UTF-8
 		if (UtilityConvertString(&Temporary_Buffer[Text_Payload_Offset], Pointer_SMS_Record->String_Text, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Text_Payload_Bytes_Count, sizeof(Pointer_SMS_Record->String_Text)) < 0) return -1;
 	}
 	else
 	{
+		// Concatenated messages with 7-bit characters have a header that must be a multiple of septets
+		if (Pointer_SMS_Record->Records_Count > 1)
+		{
+			Septet_Padding_Bits_Count = 1; // The Concatenated Short Messages user header is 6-byte long, so it is 48-bit long. To align on a septet, 1 padding bit must be added TODO support more user headers if needed by providing the padding bits count as a SMSDecodeRecordHeader() parameter
+			Text_Payload_Bytes_Count--; // TODO Is this needed because of the 1-bit padding ?
+
+			// Shift all message bytes by the needed amount of bits
+			for (i = 0; i < Text_Payload_Bytes_Count; i++)
+			{
+				// Shift the current byte by the padding bits amount
+				Current_Byte = Temporary_Buffer[Text_Payload_Offset + i];
+				Current_Byte >>= Septet_Padding_Bits_Count;
+
+				// Make sure not to overflow the reception buffer by trying to access one more byte at the end of the message
+				if (i < Text_Payload_Bytes_Count - 1)
+				{
+					// Retrieve the remaining current byte bits in the next byte
+					Next_Byte = Temporary_Buffer[Text_Payload_Offset + i + 1];
+					Next_Byte <<= 8 - Septet_Padding_Bits_Count;
+					Current_Byte |= Next_Byte;
+				}
+
+				// Update the data buffer so it can be passed as-is to the uncompression function
+				Temporary_Buffer[Text_Payload_Offset + i] = Current_Byte;
+			}
+		}
+
 		// Extract the text content with the custom character set for extended ASCII
 		SMSUncompress7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, String_Temporary);
 
 		// Convert custom character set to UTF-8
 		SMSConvert7BitExtendedASCII(String_Temporary, Pointer_SMS_Record->String_Text);
 	}
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Decoded text : \"%s\".\n", Pointer_SMS_Record->String_Text);
 
 	// Tell that record contains data
 	Pointer_SMS_Record->Is_Data_Present = 1;
@@ -480,30 +537,13 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 	TSMSRecord *Pointer_SMS_Record, *Pointer_Searched_SMS_Record;
 
 	// Read all possible records
-	printf("Reading all SMS records...\n");
+	printf("Retrieving all SMS records...\n");
 	for (i = 1; i <= SMS_RECORDS_MAXIMUM_COUNT; i++)
 	{
-		printf("\033[32mSMS record number = %d\033[0m\n", i); // TEST
-		if (SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Records[i - 1]) == 0) // Record array is zero-based
-		{
-			// TEST
-			printf("Phone number : %s\n", SMS_Records[i - 1].String_Phone_Number);
-			printf("Message storage location : ");
-			switch (SMS_Records[i - 1].Message_Storage_Location)
-			{
-				case SMS_STORAGE_LOCATION_DRAFT:
-					printf("draft\n");
-					break;
-				case SMS_STORAGE_LOCATION_INBOX:
-					printf("inbox\n");
-					break;
-				case SMS_STORAGE_LOCATION_SENT:
-					printf("sent\n");
-					break;
-			}
-			printf("Message content : %s\n", SMS_Records[i - 1].String_Text);
-		}
-		printf("\n");
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS record number = %d/%d.\n", i, SMS_RECORDS_MAXIMUM_COUNT);
+		if (SMSDownloadSingleRecord(Serial_Port_ID, i, &SMS_Records[i - 1]) == 0) LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Record contains data.\n"); // Record array is zero-based
+		else LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Record is empty.\n");
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "\n");
 	}
 
 	// Create output directories
@@ -514,21 +554,21 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 	Pointer_File_Inbox = fopen("Output/SMS/Inbox.txt", "w");
 	if (Pointer_File_Inbox == NULL)
 	{
-		printf("Error : could not create the SMS \"Inbox.txt\" file (%s).\n", strerror(errno));
+		LOG("Error : could not create the SMS \"Inbox.txt\" file (%s).\n", strerror(errno));
 		goto Exit;
 	}
 	// Sent
 	Pointer_File_Sent = fopen("Output/SMS/Sent.txt", "w");
 	if (Pointer_File_Sent == NULL)
 	{
-		printf("Error : could not create the SMS \"Sent.txt\" file (%s).\n", strerror(errno));
+		LOG("Error : could not create the SMS \"Sent.txt\" file (%s).\n", strerror(errno));
 		goto Exit;
 	}
 	// Draft
 	Pointer_File_Draft = fopen("Output/SMS/Draft.txt", "w");
 	if (Pointer_File_Draft == NULL)
 	{
-		printf("Error : could not create the SMS \"Draft.txt\" file (%s).\n", strerror(errno));
+		LOG("Error : could not create the SMS \"Draft.txt\" file (%s).\n", strerror(errno));
 		goto Exit;
 	}
 
