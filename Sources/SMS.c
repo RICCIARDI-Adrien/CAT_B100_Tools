@@ -20,7 +20,7 @@
 #define SMS_TEXT_STRING_MAXIMUM_SIZE 512
 
 /** How many records to read from the phone. */
-#define SMS_RECORDS_MAXIMUM_COUNT 300
+#define SMS_RECORDS_MAXIMUM_COUNT 450 // This value is reported by the command AT+EQSI, it is set to 20 for the SIM storage and 450 for the mobile equipment storage
 
 //-------------------------------------------------------------------------------------------------
 // Private types
