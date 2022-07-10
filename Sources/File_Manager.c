@@ -18,77 +18,24 @@
 //-------------------------------------------------------------------------------------------------
 // Public functions
 //-------------------------------------------------------------------------------------------------
-void FileManagerListInitialize(TFileManagerList *Pointer_List)
-{
-	Pointer_List->Pointer_Head = NULL;
-	Pointer_List->Files_Count = 0;
-}
-
-void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags)
-{
-	TFileManagerFileListItem *Pointer_Item_To_Add, *Pointer_Temporary_Item;
-
-	// Create the list item
-	Pointer_Item_To_Add = malloc(sizeof(TFileManagerFileListItem));
-	assert(Pointer_Item_To_Add != NULL);
-
-	// Fill the item
-	strncpy(Pointer_Item_To_Add->String_File_Name, Pointer_String_File_Name, sizeof(Pointer_Item_To_Add->String_File_Name) - 1);
-	Pointer_Item_To_Add->String_File_Name[sizeof(Pointer_Item_To_Add->String_File_Name) - 1] = 0; // Make sure string is terminated, even if it was too long to fit in the name buffer
-	Pointer_Item_To_Add->File_Size = File_Size;
-	Pointer_Item_To_Add->Flags = Flags;
-	Pointer_Item_To_Add->Pointer_Next_Item = NULL; // Tell the list browsing algorithms that this item is the last of the list
-
-	// Initialize the list head if the list is empty
-	if (Pointer_List->Pointer_Head == NULL) Pointer_List->Pointer_Head = Pointer_Item_To_Add;
-	// Otherwise append the item at the end of the list
-	else
-	{
-		// Find the list tail
-		Pointer_Temporary_Item = Pointer_List->Pointer_Head;
-		while (Pointer_Temporary_Item->Pointer_Next_Item != NULL) Pointer_Temporary_Item = Pointer_Temporary_Item->Pointer_Next_Item;
-
-		// Add the file at the end of the list
-		Pointer_Temporary_Item->Pointer_Next_Item = Pointer_Item_To_Add;
-	}
-	Pointer_List->Files_Count++;
-}
-
-void FileManagerListClear(TFileManagerList *Pointer_List)
-{
-	TFileManagerFileListItem *Pointer_Current_Item, *Pointer_Next_Item;
-
-	// Free all list items
-	Pointer_Current_Item = Pointer_List->Pointer_Head;
-	while (Pointer_Current_Item != NULL)
-	{
-		Pointer_Next_Item = Pointer_Current_Item->Pointer_Next_Item;
-		free(Pointer_Current_Item);
-		Pointer_Current_Item = Pointer_Next_Item;
-	}
-
-	// Reset the list information
-	Pointer_List->Pointer_Head = NULL;
-	Pointer_List->Files_Count = 0;
-}
-
-void FileManagerListDisplay(TFileManagerList *Pointer_List)
+void FileManagerListAddFile(TList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags)
 {
 	TFileManagerFileListItem *Pointer_Item;
 
-	// Display list information
-	printf("List address = 0x%p, files count = %d.\n", Pointer_List, Pointer_List->Files_Count);
+	// Create the list item
+	Pointer_Item = malloc(sizeof(TFileManagerFileListItem));
+	assert(Pointer_Item != NULL);
 
-	// Display content
-	Pointer_Item = Pointer_List->Pointer_Head;
-	while (Pointer_Item != NULL)
-	{
-		printf("Name = \"%s\", size = %u, flags = 0x%02X.\n", Pointer_Item->String_File_Name, Pointer_Item->File_Size, Pointer_Item->Flags);
-		Pointer_Item = Pointer_Item->Pointer_Next_Item;
-	}
+	// Fill the item
+	strncpy(Pointer_Item->String_File_Name, Pointer_String_File_Name, sizeof(Pointer_Item->String_File_Name) - 1);
+	Pointer_Item->String_File_Name[sizeof(Pointer_Item->String_File_Name) - 1] = 0; // Make sure string is terminated, even if it was too long to fit in the name buffer
+	Pointer_Item->File_Size = File_Size;
+	Pointer_Item->Flags = Flags;
+
+	ListAddItem(Pointer_List, Pointer_Item);
 }
 
-int FileManagerListDrives(TSerialPortID Serial_Port_ID, TFileManagerList *Pointer_List)
+int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 {
 	unsigned char Buffer[128];
 	char String_Temporary[sizeof(Buffer) * 2], String_Drive_Name[sizeof(Buffer) * 2]; // Twice more characters are needed as bytes are converted to hexadecimal characters
@@ -107,7 +54,7 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TFileManagerList *Pointe
 	if (ATCommandSendCommand(Serial_Port_ID, "AT+EFSL") < 0) goto Exit;
 
 	// Wait for all file names to be received
-	FileManagerListInitialize(Pointer_List);
+	ListInitialize(Pointer_List);
 	do
 	{
 		// Wait for a drive information string
@@ -158,7 +105,7 @@ Exit:
 	return Return_Value;
 }
 
-int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List)
+int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TList *Pointer_List)
 {
 	unsigned char Buffer[512];
 	char String_Temporary[sizeof(Buffer) * 2], String_File_Name[sizeof(Buffer) * 2]; // Twice more characters are needed as bytes are converted to hexadecimal characters
@@ -189,7 +136,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 	if (ATCommandSendCommand(Serial_Port_ID, String_Temporary) < 0) goto Exit;
 
 	// Wait for all file names to be received
-	FileManagerListInitialize(Pointer_List);
+	ListInitialize(Pointer_List);
 	do
 	{
 		// Wait for a file information string
@@ -240,38 +187,41 @@ Exit:
 	return Return_Value;
 }
 
-void FileManagerDisplayDirectoryListing(TFileManagerList *Pointer_List)
+void FileManagerDisplayDirectoryListing(TList *Pointer_List)
 {
-	TFileManagerFileListItem *Pointer_Item;
+	TListItem *Pointer_Item;
+	TFileManagerFileListItem *Pointer_File_List_Item;
 
 	Pointer_Item = Pointer_List->Pointer_Head;
 	while (Pointer_Item != NULL)
 	{
+		Pointer_File_List_Item = Pointer_Item->Pointer_Data;
+
 		// Display file attributes
 		// Archive flag
-		if (FILE_MANAGER_ATTRIBUTE_IS_ARCHIVE(Pointer_Item)) putchar('A');
+		if (FILE_MANAGER_ATTRIBUTE_IS_ARCHIVE(Pointer_File_List_Item)) putchar('A');
 		else  putchar('-');
 		// Directory flag
-		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_Item)) putchar('D');
+		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_File_List_Item)) putchar('D');
 		else putchar('-');
 		// System flag
-		if (FILE_MANAGER_ATTRIBUTE_IS_SYSTEM(Pointer_Item)) putchar('S');
+		if (FILE_MANAGER_ATTRIBUTE_IS_SYSTEM(Pointer_File_List_Item)) putchar('S');
 		else putchar('-');
 		// Hidden flag
-		if (FILE_MANAGER_ATTRIBUTE_IS_HIDDEN(Pointer_Item)) putchar('H');
+		if (FILE_MANAGER_ATTRIBUTE_IS_HIDDEN(Pointer_File_List_Item)) putchar('H');
 		else putchar('-');
 		// Read only flag
-		if (FILE_MANAGER_ATTRIBUTE_IS_READ_ONLY(Pointer_Item)) putchar('R');
+		if (FILE_MANAGER_ATTRIBUTE_IS_READ_ONLY(Pointer_File_List_Item)) putchar('R');
 		else putchar('-');
 
 		// Display file size if this is a regular file
-		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_Item)) printf("             ");
-		else printf("  %11u", Pointer_Item->File_Size);
+		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_File_List_Item)) printf("             ");
+		else printf("  %11u", Pointer_File_List_Item->File_Size);
 
 		// Display the file name
-		printf("  %s", Pointer_Item->String_File_Name);
+		printf("  %s", Pointer_File_List_Item->String_File_Name);
 		// Add a trailing backslash for a directory name to make this more visual, but do not do that on "." and ".."
-		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_Item) && (strcmp(Pointer_Item->String_File_Name, ".") != 0) && (strcmp(Pointer_Item->String_File_Name, "..") != 0)) putchar('\\');
+		if (FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_File_List_Item) && (strcmp(Pointer_File_List_Item->String_File_Name, ".") != 0) && (strcmp(Pointer_File_List_Item->String_File_Name, "..") != 0)) putchar('\\');
 
 		// Handle next file
 		putchar('\n');

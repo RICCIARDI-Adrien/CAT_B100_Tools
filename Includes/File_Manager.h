@@ -5,6 +5,7 @@
 #ifndef H_FILE_MANAGER_H
 #define H_FILE_MANAGER_H
 
+#include <List.h>
 #include <Serial_Port.h>
 
 //-------------------------------------------------------------------------------------------------
@@ -30,41 +31,18 @@ typedef struct TFileManagerFileListItem
 	char String_File_Name[256];
 	unsigned int File_Size; //!< The phone is using system the FAT32 file system, so 32 bits should be enough.
 	int Flags; //!< The flags byte looks like a lot the FAT file system "file attribute" field (offset 0x0B in a FAT directory entry).
-	struct TFileManagerFileListItem *Pointer_Next_Item;
 } TFileManagerFileListItem;
-
-/** A list of files and directories, from a specific path. This list is not recursive, it does not contain another list for the nested directories. */
-typedef struct
-{
-	TFileManagerFileListItem *Pointer_Head;
-	int Files_Count;
-} TFileManagerList;
 
 //-------------------------------------------------------------------------------------------------
 // Functions
 //-------------------------------------------------------------------------------------------------
-// File lists management functions
-/** Clear all internal fields of the list to make it ready to use by other list functions.
- * @param Pointer_List The list to initialize.
- * @warning This function assumes that the list is not initialized or has been already cleared with FileManagerListClear(). Passing an initialized list to this function will result in a memory leak.
- */
-void FileManagerListInitialize(TFileManagerList *Pointer_List);
 /** Append a new item made of the provided file information to the end of the list.
  * @param Pointer_List The list to add an item to the tail. This list must have been previously initialized.
  * @param Pointer_String_File_Name The file name string content will be copied to the newly added list item.
  * @param File_Size The file size value will be copied to the newly added list item.
  * @param Flags The flags value will be copied to the newly added list item.
  */
-void FileManagerListAddFile(TFileManagerList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags);
-/** Free all resources used by a list.
- * @param Pointer_List The list to release resources from.
- * @warning This function assumes that the list has already been initialized. Passing an uninitialized list can lead to a crash.
- */
-void FileManagerListClear(TFileManagerList *Pointer_List);
-/** Display a list internal content, this function is intended for debugging purpose.
- * @param Pointer_List The list to display content.
- */
-void FileManagerListDisplay(TFileManagerList *Pointer_List);
+void FileManagerListAddFile(TList *Pointer_List, char *Pointer_String_File_Name, unsigned File_Size, int Flags);
 
 /** Find all available drives (C:, D: and so on).
  * @param Serial_Port_ID The serial port the phone is connected to.
@@ -72,7 +50,7 @@ void FileManagerListDisplay(TFileManagerList *Pointer_List);
  * @return -1 if an error occurred,
  * @return 0 on success.
  */
-int FileManagerListDrives(TSerialPortID Serial_Port_ID, TFileManagerList *Pointer_List);
+int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List);
 
 /** Create a list containing all files and subdirectories in a specified directory, like ls. This function is not recursive and does not list the content of the subdirectories.
  * @param Serial_Port_ID The serial port the phone is connected to.
@@ -81,12 +59,12 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TFileManagerList *Pointe
  * @return -1 if an error occurred,
  * @return 0 on success.
  */
-int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TFileManagerList *Pointer_List);
+int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Path, TList *Pointer_List);
 
 /** Fancy displaying of a list of files, designed to look like the DOS "dir" command.
  * @param Pointer_List The list to display on the screen.
  */
-void FileManagerDisplayDirectoryListing(TFileManagerList *Pointer_List);
+void FileManagerDisplayDirectoryListing(TList *Pointer_List);
 
 /** Retrieve a file content from the phone.
  * @param Serial_Port_ID The serial port the phone is connected to.

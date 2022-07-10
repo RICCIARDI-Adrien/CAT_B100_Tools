@@ -4,6 +4,7 @@
  */
 #include <AT_Command.h>
 #include <File_Manager.h>
+#include <List.h>
 #include <MMS.h>
 #include <Serial_Port.h>
 #include <SMS.h>
@@ -54,7 +55,7 @@ int main(int argc, char *argv[])
 	TSerialPortID Serial_Port_ID = SERIAL_PORT_INVALID_ID;
 	int Return_Value = EXIT_FAILURE, i;
 	TMainCommand Command = MAIN_COMMANDS_COUNT; // This value is invalid, this allows to detect if no known command was provided by the user
-	TFileManagerList List;
+	TList List;
 
 	// Display program banner
 	printf("+---------------------------+\n"
@@ -163,7 +164,7 @@ int main(int argc, char *argv[])
 				goto Exit;
 			}
 			FileManagerDisplayDirectoryListing(&List);
-			FileManagerListClear(&List);
+			ListClear(&List);
 			break;
 
 		case MAIN_COMMAND_LIST_DIRECTORY:
@@ -173,7 +174,7 @@ int main(int argc, char *argv[])
 				goto Exit;
 			}
 			FileManagerDisplayDirectoryListing(&List);
-			FileManagerListClear(&List);
+			ListClear(&List);
 			break;
 
 		case MAIN_COMMAND_GET_FILE:
