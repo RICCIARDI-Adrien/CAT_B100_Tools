@@ -75,4 +75,13 @@ void FileManagerDisplayDirectoryListing(TList *Pointer_List);
  */
 int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path);
 
+/** Retrieve a directory files and all the subdirectories it contains, recreating the same directories tree on output.
+ * @param Serial_Port_ID The serial port the phone is connected to.
+ * @param Pointer_String_Absolute_Phone_Path The directory path. This must be the absolute path starting from the drive, directory separators are \ like on Windows.
+ * @param Pointer_String_Destination_PC_Path The directory path that will be created on the local PC.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
+int FileManagerDownloadDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path);
+
 #endif

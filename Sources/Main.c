@@ -22,6 +22,7 @@ typedef enum
 	MAIN_COMMAND_LIST_DRIVES,
 	MAIN_COMMAND_LIST_DIRECTORY,
 	MAIN_COMMAND_GET_FILE,
+	MAIN_COMMAND_GET_DIRECTORY,
 	MAIN_COMMAND_GET_ALL_MMS,
 	MAIN_COMMAND_GET_ALL_SMS,
 	MAIN_COMMANDS_COUNT
@@ -40,6 +41,7 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 		"  list-drives\n"
 		"  list-directory <absolute path>\n"
 		"  get-file <absolute file path on phone> <output file path on PC>\n"
+		"  get-directory <absolute directory path on phone> <output directory path on PC>\n"
 		"MMS commands :\n"
 		"  get-all-mms\n"
 		"SMS commands :\n"
@@ -122,6 +124,32 @@ int main(int argc, char *argv[])
 			Command = MAIN_COMMAND_GET_FILE;
 			break;
 		}
+		// MAIN_COMMAND_GET_DIRECTORY
+		else if (strcmp(argv[i], "get-directory") == 0)
+		{
+			// Retrieve the first mandatory argument
+			i++;
+			if (i == argc)
+			{
+				printf("Error : the get-directory command needs two arguments, the directory path on the phone and the output directory path on the PC.\n");
+				MainDisplayUsage(argv[0]);
+				return EXIT_FAILURE;
+			}
+			Pointer_String_Argument_1 = argv[i];
+
+			// Retrieve the second mandatory argument
+			i++;
+			if (i == argc)
+			{
+				printf("Error : the get-directory command needs a second argument, the output directory path on the PC.\n");
+				MainDisplayUsage(argv[0]);
+				return EXIT_FAILURE;
+			}
+			Pointer_String_Argument_2 = argv[i];
+
+			Command = MAIN_COMMAND_GET_DIRECTORY;
+			break;
+		}
 		// MAIN_COMMAND_GET_ALL_MMS
 		else if (strcmp(argv[i], "get-all-mms") == 0)
 		{
@@ -184,6 +212,15 @@ int main(int argc, char *argv[])
 				goto Exit;
 			}
 			printf("The file \"%s\" was successfully retrieved from the phone.\n", Pointer_String_Argument_1);
+			break;
+
+		case MAIN_COMMAND_GET_DIRECTORY:
+			if (FileManagerDownloadDirectory(Serial_Port_ID, Pointer_String_Argument_1, Pointer_String_Argument_2) != 0)
+			{
+				printf("Error : could not get the directory \"%s\".\n", Pointer_String_Argument_1);
+				goto Exit;
+			}
+			printf("The directory \"%s\" content was successfully retrieved from the phone.\n", Pointer_String_Argument_1);
 			break;
 
 		case MAIN_COMMAND_GET_ALL_MMS:

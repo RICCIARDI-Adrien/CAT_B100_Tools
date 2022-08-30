@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <File_Manager.h>
+#include <Log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <Utility.h>
+
+//-------------------------------------------------------------------------------------------------
+// Private constants
+//-------------------------------------------------------------------------------------------------
+/** Allow to turn on or off debug messages. */
+#define FILE_MANAGER_IS_DEBUG_ENABLED 0
 
 //-------------------------------------------------------------------------------------------------
 // Public functions
@@ -326,5 +333,87 @@ Exit:
 	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
 	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
+	return Return_Value;
+}
+
+int FileManagerDownloadDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path)
+{
+	TList List_Files;
+	TListItem *Pointer_Item;
+	TFileManagerFileListItem *Pointer_File_List_Item;
+	int Return_Value = -1;
+	char String_Source_File_Name[512], String_Output_File_Name[512];
+
+	// Find all directories and files located in this directory
+	LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Listing directory \"%s\" :\n", Pointer_String_Absolute_Phone_Path);
+	if (FileManagerListDirectory(Serial_Port_ID, Pointer_String_Absolute_Phone_Path, &List_Files) != 0)
+	{
+		LOG("Error : could not list the directory \"%s\".\n", Pointer_String_Absolute_Phone_Path);
+		return -1;
+	}
+	#if FILE_MANAGER_IS_DEBUG_ENABLED
+		FileManagerDisplayDirectoryListing(&List_Files);
+	#endif
+
+	// Create the output directory
+	if (UtilityCreateDirectory(Pointer_String_Destination_PC_Path) != 0)
+	{
+		LOG("Error : could not create the output directory \"%s\".\n", Pointer_String_Destination_PC_Path);
+		goto Exit_Free_List;
+	}
+
+	// Process each file
+	Pointer_Item = List_Files.Pointer_Head;
+	while (Pointer_Item != NULL)
+	{
+		Pointer_File_List_Item = Pointer_Item->Pointer_Data;
+
+		// Display the processed file for debugging purpose
+		LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Processing the %s \"%s\".\n", FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_File_List_Item) ? "directory" : "file", Pointer_File_List_Item->String_File_Name);
+
+		// Bypass the special directories "." and ".."
+		if (strcmp(Pointer_File_List_Item->String_File_Name, ".") == 0) goto Next_File;
+		if (strcmp(Pointer_File_List_Item->String_File_Name, "..") == 0) goto Next_File;
+
+		// Create the source file path
+		snprintf(String_Source_File_Name, sizeof(String_Source_File_Name), "%s\\%s", Pointer_String_Absolute_Phone_Path, Pointer_File_List_Item->String_File_Name);
+		LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Source file path : \"%s\".\n", String_Source_File_Name);
+
+		// Create the output file path
+		snprintf(String_Output_File_Name, sizeof(String_Output_File_Name), "%s/%s", Pointer_String_Destination_PC_Path, Pointer_File_List_Item->String_File_Name);
+		LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Output file path : \"%s\".\n", String_Output_File_Name);
+
+		// Download the file if this is the case
+		if (!FILE_MANAGER_ATTRIBUTE_IS_DIRECTORY(Pointer_File_List_Item))
+		{
+			// Try to download the file
+			printf("Downloading the file \"%s\"...\n", String_Source_File_Name);
+			if (FileManagerDownloadFile(Serial_Port_ID, String_Source_File_Name, String_Output_File_Name) != 0)
+			{
+				LOG("Error : failed to download the file \"%s\".\n", String_Source_File_Name);
+				goto Exit_Free_List;
+			}
+		}
+		// Recurse into the directory if this is the case
+		else
+		{
+			printf("Scanning the directory \"%s\"...\n", String_Source_File_Name);
+			if (FileManagerDownloadDirectory(Serial_Port_ID, String_Source_File_Name, String_Output_File_Name) != 0)
+			{
+				LOG("Error : failed to scan the directory \"%s\".\n", String_Source_File_Name);
+				goto Exit_Free_List;
+			}
+		}
+
+Next_File:
+		Pointer_Item = Pointer_Item->Pointer_Next_Item;
+	}
+
+	// Everything went fine
+	Return_Value = 0;
+
+Exit_Free_List:
+	ListClear(&List_Files);
+
 	return Return_Value;
 }
