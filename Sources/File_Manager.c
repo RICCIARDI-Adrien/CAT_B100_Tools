@@ -298,6 +298,8 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 				printf("Error : the chunk payload size is too big.\n");
 				goto Exit;
 			}
+			LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Chunk payload size : %d.\n", Size);
+			if (Size <= 0) continue;
 
 			// Retrieve the payload
 			if (sscanf(&String_Temporary[Read_Index], "\"%[0-9A-F]\"", String_Payload) != 1)
