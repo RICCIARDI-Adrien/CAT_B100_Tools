@@ -53,7 +53,7 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
 	if (strcmp(String_Temporary, "OK") != 0)
 	{
-		printf("Error : failed to send the AT command that enables the file manager.\n");
+		LOG("Error : failed to send the AT command that enables the file manager.\n");
 		return -1;
 	}
 
@@ -66,7 +66,7 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 	{
 		// Wait for a drive information string
 		Result = ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary));
-		if (Result == -2) printf("Error : the 'list drives' command returned an unexpected error.\n");
+		if (Result == -2) LOG("Error : the 'list drives' command returned an unexpected error.\n");
 		if (Result < 0) goto Exit;
 
 		// Is this a drive record ?
@@ -75,7 +75,7 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 			// Extract drive name
 			if (sscanf(String_Temporary, "+EFSL: \"%[0-9A-F]\"", String_Drive_Name) != 1)
 			{
-				printf("Error : could not extract the drive name from the command answer \"%s\".\n", String_Temporary);
+				LOG("Error : could not extract the drive name from the command answer \"%s\".\n", String_Temporary);
 				goto Exit;
 			}
 
@@ -83,7 +83,7 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 			Size = ATCommandConvertHexadecimalToBinary(String_Drive_Name, (unsigned char *) String_Temporary, sizeof(String_Temporary));
 			if (Size < 0)
 			{
-				printf("Error : could not convert the drive name hexadecimal string \"%s\" to binary.\n", String_Drive_Name);
+				LOG("Error : could not convert the drive name hexadecimal string \"%s\" to binary.\n", String_Drive_Name);
 				goto Exit;
 			}
 
@@ -91,7 +91,7 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 			Size = UtilityConvertString(String_Temporary, String_Drive_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Drive_Name));
 			if (Size < 0)
 			{
-				printf("Error : could not convert a drive name from UTF-16 to UTF-8.\n");
+				LOG("Error : could not convert a drive name from UTF-16 to UTF-8.\n");
 				goto Exit;
 			}
 			String_Drive_Name[Size] = 0; // Make sure the string is terminated
@@ -108,7 +108,7 @@ Exit:
 	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
 	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
-	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
+	if (strcmp(String_Temporary, "OK") != 0) LOG("Error : failed to send the AT command that disables the file manager.\n");
 	return Return_Value;
 }
 
@@ -124,7 +124,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
 	if (strcmp(String_Temporary, "OK") != 0)
 	{
-		printf("Error : failed to send the AT command that enables the file manager.\n");
+		LOG("Error : failed to send the AT command that enables the file manager.\n");
 		return -1;
 	}
 
@@ -132,7 +132,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 	Size = UtilityConvertString(Pointer_String_Absolute_Path, Buffer, UTILITY_CHARACTER_SET_UTF8, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, 0, sizeof(Buffer));
 	if (Size == -1)
 	{
-		printf("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Path);
+		LOG("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Path);
 		goto Exit;
 	}
 
@@ -148,7 +148,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 	{
 		// Wait for a file information string
 		Result = ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary));
-		if (Result == -2) printf("Error : the specified path \"%s\" does not exist.\n", Pointer_String_Absolute_Path);
+		if (Result == -2) LOG("Error : the specified path \"%s\" does not exist.\n", Pointer_String_Absolute_Path);
 		if (Result < 0) goto Exit;
 
 		// Is this a file record ?
@@ -157,7 +157,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 			// Extract useful fields
 			if (sscanf(String_Temporary, "+EFSL: \"%[0-9A-F]\", %u, %d", String_File_Name, &File_Size, &Flags) != 3)
 			{
-				printf("Error : could not extract file information fields from the command answer \"%s\".\n", String_Temporary);
+				LOG("Error : could not extract file information fields from the command answer \"%s\".\n", String_Temporary);
 				goto Exit;
 			}
 
@@ -165,7 +165,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 			Size = ATCommandConvertHexadecimalToBinary(String_File_Name, (unsigned char *) String_Temporary, sizeof(String_Temporary));
 			if (Size < 0)
 			{
-				printf("Error : could not convert the file name hexadecimal string \"%s\" to binary.\n", String_File_Name);
+				LOG("Error : could not convert the file name hexadecimal string \"%s\" to binary.\n", String_File_Name);
 				goto Exit;
 			}
 
@@ -173,7 +173,7 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 			Size = UtilityConvertString(String_Temporary, String_File_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_File_Name));
 			if (Size < 0)
 			{
-				printf("Error : could not convert a file name from UTF-16 to UTF-8.\n");
+				LOG("Error : could not convert a file name from UTF-16 to UTF-8.\n");
 				goto Exit;
 			}
 			String_File_Name[Size] = 0; // Make sure the string is terminated
@@ -190,7 +190,7 @@ Exit:
 	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
 	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
-	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
+	if (strcmp(String_Temporary, "OK") != 0) LOG("Error : failed to send the AT command that disables the file manager.\n");
 	return Return_Value;
 }
 
@@ -246,7 +246,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	File_Descriptor = open(Pointer_String_Destination_PC_Path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (File_Descriptor == -1)
 	{
-		printf("Error : could not create the output file \"%s\" (%s).\n", Pointer_String_Destination_PC_Path, strerror(errno));
+		LOG("Error : could not create the output file \"%s\" (%s).\n", Pointer_String_Destination_PC_Path, strerror(errno));
 		return -1;
 	}
 
@@ -254,7 +254,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	Size = UtilityConvertString(Pointer_String_Absolute_Phone_Path, Buffer, UTILITY_CHARACTER_SET_UTF8, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, 0, sizeof(Buffer));
 	if (Size == -1)
 	{
-		printf("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Phone_Path);
+		LOG("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Phone_Path);
 		goto Exit;
 	}
 
@@ -263,7 +263,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
 	if (strcmp(String_Temporary, "OK") != 0)
 	{
-		printf("Error : failed to send the AT command that enables the file manager.\n");
+		LOG("Error : failed to send the AT command that enables the file manager.\n");
 		return -1;
 	}
 
@@ -278,7 +278,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	{
 		// Wait for a file chunk string
 		Result = ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary));
-		if (Result == -2) printf("Error : the specified path \"%s\" does not exist.\n", Pointer_String_Absolute_Phone_Path);
+		if (Result == -2) LOG("Error : the specified path \"%s\" does not exist.\n", Pointer_String_Absolute_Phone_Path);
 		if (Result < 0) goto Exit;
 
 		// Is this a chunk ?
@@ -287,7 +287,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 			// Extract chunk information
 			if (sscanf(String_Temporary, "+EFSR: %*d, %*d, %d, %n", &Size, &Read_Index) != 1) // The scanf() 'n' modifier does not increase the count returned by the function
 			{
-				printf("Error : could not extract file chunk information.\n");
+				LOG("Error : could not extract file chunk information.\n");
 				goto Exit;
 			}
 
@@ -295,7 +295,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 			Size *= 2; // The chunk size represents the final size in bytes, however each byte is encoded by two hexadecimal characters, so take this into account
 			if (Size > (int) sizeof(String_Payload))
 			{
-				printf("Error : the chunk payload size is too big.\n");
+				LOG("Error : the chunk payload size is too big.\n");
 				goto Exit;
 			}
 			LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Chunk payload size : %d.\n", Size);
@@ -304,7 +304,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 			// Retrieve the payload
 			if (sscanf(&String_Temporary[Read_Index], "\"%[0-9A-F]\"", String_Payload) != 1)
 			{
-				printf("Error : failed to extract the payload from the file chunk.\n");
+				LOG("Error : failed to extract the payload from the file chunk.\n");
 				goto Exit;
 			}
 
@@ -312,14 +312,14 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 			Size = ATCommandConvertHexadecimalToBinary(String_Payload, Buffer, sizeof(Buffer));
 			if (Size < 0)
 			{
-				printf("Error : could not convert file chunk payload from hexadecimal to binary.\n");
+				LOG("Error : could not convert file chunk payload from hexadecimal to binary.\n");
 				goto Exit;
 			}
 
 			// Append the data to the file
 			if (write(File_Descriptor, Buffer, Size) != Size)
 			{
-				printf("Error : could not write the file chunk payload to the output file (%s).\n", strerror(errno));
+				LOG("Error : could not write the file chunk payload to the output file (%s).\n", strerror(errno));
 				goto Exit;
 			}
 		}
@@ -334,7 +334,7 @@ Exit:
 	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
 	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
-	if (strcmp(String_Temporary, "OK") != 0) printf("Error : failed to send the AT command that disables the file manager.\n");
+	if (strcmp(String_Temporary, "OK") != 0) LOG("Error : failed to send the AT command that disables the file manager.\n");
 	return Return_Value;
 }
 
