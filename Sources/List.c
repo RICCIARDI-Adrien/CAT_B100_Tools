@@ -47,6 +47,7 @@ void ListAddItem(TList *Pointer_List, void *Pointer_Item_Data)
 void ListClear(TList *Pointer_List)
 {
 	TListItem *Pointer_Current_Item, *Pointer_Next_Item;
+	int Cleared_Items_Count = 0;
 
 	// Free all list items
 	Pointer_Current_Item = Pointer_List->Pointer_Head;
@@ -56,7 +57,11 @@ void ListClear(TList *Pointer_List)
 		free(Pointer_Current_Item->Pointer_Data);
 		free(Pointer_Current_Item);
 		Pointer_Current_Item = Pointer_Next_Item;
+		Cleared_Items_Count++;
 	}
+
+	// Make sure the list was not corrupted
+	assert(Cleared_Items_Count == Pointer_List->Items_Count);
 
 	// Reset the list information
 	Pointer_List->Pointer_Head = NULL;
