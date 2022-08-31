@@ -4,6 +4,7 @@
  */
 #include <assert.h>
 #include <List.h>
+#include <Log.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -60,4 +61,27 @@ void ListClear(TList *Pointer_List)
 	// Reset the list information
 	Pointer_List->Pointer_Head = NULL;
 	Pointer_List->Items_Count = 0;
+}
+
+void ListDisplay(TList *Pointer_List, char *Pointer_String_Name, void (*ListDisplayItemData)(void *Pointer_Item_Data))
+{
+	TListItem *Pointer_Item;
+
+	// Make sure the callback function is present
+	if (ListDisplayItemData == NULL)
+	{
+		LOG("Error : you must provide a callback function to display an item content.\n");
+		return;
+	}
+
+	// Display list information
+	LOG("List name : %s, address : %p, items count : %d.\n", Pointer_String_Name, Pointer_List, Pointer_List->Items_Count);
+
+	// Display each item content
+	Pointer_Item = Pointer_List->Pointer_Head;
+	while (Pointer_Item != NULL)
+	{
+		ListDisplayItemData(Pointer_Item->Pointer_Data);
+		Pointer_Item = Pointer_Item->Pointer_Next_Item;
+	}
 }

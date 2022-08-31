@@ -33,6 +33,7 @@ void ListInitialize(TList *Pointer_List);
 /** Append a new generic item to the list.
  * @param Pointer_List The list to add an item to the tail. This list must have been previously initialized.
  * @param Pointer_Item The item that will be added at the list tail. The item data memory must have been allocated with malloc().
+ * @warning This function assumes that the list has already been initialized.
  */
 void ListAddItem(TList *Pointer_List, void *Pointer_Item_Data);
 
@@ -42,9 +43,12 @@ void ListAddItem(TList *Pointer_List, void *Pointer_Item_Data);
  */
 void ListClear(TList *Pointer_List);
 
-/** Display a list internal content, this function is intended for debugging purpose.
+/** Display each list single item.
  * @param Pointer_List The list to display content.
+ * @param Pointer_String_Name The list name to be displayed before all items content, this is useful when multiple different lists are displayed to identify the correct one.
+ * @param ListDisplayItemData A callback function that will be called for each list item. This function is responsible for displaying the specific item content.
+ * @note This function is intended for debugging purpose.
  */
-//void ListDisplay(TList *Pointer_List);
+void ListDisplay(TList *Pointer_List, char *Pointer_String_Name, void (*ListDisplayItemData)(void *Pointer_Item_Data));
 
 #endif
