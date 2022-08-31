@@ -327,42 +327,71 @@ static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSReco
 	{
 		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS User-Data-Header-Indicator is present.\n");
 
-		// Only the concatenated short messages facility is supported for now (see ETSI GSM 03.40 version 5.3.0 chapter 9.2.3.24.1)
-		// Make sure the User Data Header Length is what expected
-		if (*Pointer_Message_Buffer != 5)
-		{
-			LOG("Error : unsupported User Data Header Length : %d.\n", *Pointer_Message_Buffer);
-			return -1;
-		}
-		Pointer_Message_Buffer++;
-		Text_Payload_Offset++;
-		// Make sure the Information Element Identifier is the concatenated short messages one
-		if (*Pointer_Message_Buffer != 0)
-		{
-			LOG("Error : unsupported Information Element Identifier : %d.\n", *Pointer_Message_Buffer);
-			return -1;
-		}
-		Pointer_Message_Buffer++;
-		Text_Payload_Offset++;
-		// Make sure the Length of the Information Element is what expected
-		if (*Pointer_Message_Buffer != 3)
-		{
-			LOG("Error : unsupported Length of the Information Element : %d.\n", *Pointer_Message_Buffer);
-			return -1;
-		}
+		// Bypass the User Data Header Length field, the parser will rely only on each Information Element Identifier length
 		Pointer_Message_Buffer++;
 		Text_Payload_Offset++;
 
-		// Decode the Information Element Data
-		Pointer_SMS_Record->Record_ID = Pointer_Message_Buffer[0];
-		Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[1];
-		Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[2];
-		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Record ID : 0x%02X, records count : %d, record number : %d.\n", Pointer_SMS_Record->Record_ID, Pointer_SMS_Record->Records_Count, Pointer_SMS_Record->Record_Number);
-		Pointer_Message_Buffer += 3;
-		Text_Payload_Offset += 3;
+		// Parse the element according to its Information Element Identifier
+		Byte = *Pointer_Message_Buffer;
+		Pointer_Message_Buffer++;
+		Text_Payload_Offset++;
+		*Pointer_Text_Bytes_Count -= 2; // Also take into account the User Data Header Length field
+		switch (Byte)
+		{
+			// This is the concatenated short messages facility with 8-bit reference numbers (see ETSI GSM 03.40 version 5.3.0 chapter 9.2.3.24.1)
+			case 0:
+				LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS User-Data-Header contains a concatenated short messages element with 8-bit reference numbers.\n");
 
-		// Adjust the data length accordingly
-		*Pointer_Text_Bytes_Count -= 6;
+				// Make sure the Length of the Information Element is what expected
+				if (*Pointer_Message_Buffer != 3)
+				{
+					LOG("Error : unsupported Length of the Information Element : %d.\n", *Pointer_Message_Buffer);
+					return -1;
+				}
+				Pointer_Message_Buffer++;
+				Text_Payload_Offset++;
+
+				// Decode the Information Element Data
+				Pointer_SMS_Record->Record_ID = Pointer_Message_Buffer[0];
+				Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[1];
+				Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[2];
+				LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Record ID : 0x%02X, records count : %d, record number : %d.\n", Pointer_SMS_Record->Record_ID, Pointer_SMS_Record->Records_Count, Pointer_SMS_Record->Record_Number);
+				Pointer_Message_Buffer += 3;
+				Text_Payload_Offset += 3;
+
+				// Adjust the data length accordingly
+				*Pointer_Text_Bytes_Count -= 4;
+				break;
+
+			// This is the concatenated short messages facility with 16-bit reference numbers (see https://en.wikipedia.org/wiki/User_Data_Header and https://en.wikipedia.org/wiki/Concatenated_SMS)
+			case 8:
+				LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS User-Data-Header contains a concatenated short messages element with 16-bit reference numbers.\n");
+
+				// Make sure the Length of the Information Element is what expected
+				if (*Pointer_Message_Buffer != 4)
+				{
+					LOG("Error : unsupported Length of the Information Element : %d.\n", *Pointer_Message_Buffer);
+					return -1;
+				}
+				Pointer_Message_Buffer++;
+				Text_Payload_Offset++;
+
+				// Decode the Information Element Data
+				Pointer_SMS_Record->Record_ID = (Pointer_Message_Buffer[0] << 8) | Pointer_Message_Buffer[1];
+				Pointer_SMS_Record->Records_Count = Pointer_Message_Buffer[2];
+				Pointer_SMS_Record->Record_Number = Pointer_Message_Buffer[3];
+				LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Record ID : 0x%04X, records count : %d, record number : %d.\n", Pointer_SMS_Record->Record_ID, Pointer_SMS_Record->Records_Count, Pointer_SMS_Record->Record_Number);
+				Pointer_Message_Buffer += 4;
+				Text_Payload_Offset += 4;
+
+				// Adjust the data length accordingly
+				*Pointer_Text_Bytes_Count -= 5;
+				break;
+
+			default:
+				LOG("Error : unsupported Information Element Identifier : %d.\n", Byte);
+				return -1;
+		}
 	}
 	// Make sure values are coherent if there is only a single record (in this case there is not record 4 bytes field
 	else
