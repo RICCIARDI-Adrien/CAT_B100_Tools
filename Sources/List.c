@@ -30,7 +30,11 @@ void ListAddItem(TList *Pointer_List, void *Pointer_Item_Data)
 	Pointer_Item_To_Add->Pointer_Next_Item = NULL; // Tell the list browsing algorithms that this item is the last of the list
 
 	// Initialize the list head if the list is empty
-	if (Pointer_List->Pointer_Head == NULL) Pointer_List->Pointer_Head = Pointer_Item_To_Add;
+	if (Pointer_List->Pointer_Head == NULL)
+	{
+		Pointer_Item_To_Add->Pointer_Previous_Item = NULL;
+		Pointer_List->Pointer_Head = Pointer_Item_To_Add;
+	}
 	// Otherwise append the item at the end of the list
 	else
 	{
@@ -39,6 +43,7 @@ void ListAddItem(TList *Pointer_List, void *Pointer_Item_Data)
 		while (Pointer_Temporary_Item->Pointer_Next_Item != NULL) Pointer_Temporary_Item = Pointer_Temporary_Item->Pointer_Next_Item;
 
 		// Add the file at the end of the list
+		Pointer_Item_To_Add->Pointer_Previous_Item = Pointer_Temporary_Item;
 		Pointer_Temporary_Item->Pointer_Next_Item = Pointer_Item_To_Add;
 	}
 	Pointer_List->Items_Count++;
@@ -66,6 +71,37 @@ void ListClear(TList *Pointer_List)
 	// Reset the list information
 	Pointer_List->Pointer_Head = NULL;
 	Pointer_List->Items_Count = 0;
+}
+
+void ListClearItem(TList *Pointer_List, TListItem *Pointer_List_Item)
+{
+	TListItem *Pointer_List_Item_Previous, *Pointer_List_Item_Next;
+
+	assert(Pointer_List != NULL);
+	assert(Pointer_List_Item != NULL);
+
+	Pointer_List_Item_Previous = Pointer_List_Item->Pointer_Previous_Item;
+	Pointer_List_Item_Next = Pointer_List_Item->Pointer_Next_Item;
+
+	// Is the first item of the list removed ?
+	if (Pointer_List_Item_Previous == NULL)
+	{
+		Pointer_List->Pointer_Head = Pointer_List_Item_Next;
+		if (Pointer_List_Item_Next != NULL) Pointer_List_Item_Next->Pointer_Previous_Item = NULL; // Tell that this is the first item of the list, if of course there is an item following the one that is removed
+	}
+	// There is at least one item before the one that is removed, link the item following the one that is removed to the item preceding the one that is removed
+	else Pointer_List_Item_Previous->Pointer_Next_Item = Pointer_List_Item_Next;
+
+	// Link the item preceding the one that is removed to the item following the one that is removed if such item exists (i.e. the removed items is not at the end of the list)
+	if (Pointer_List_Item_Next != NULL) Pointer_List_Item_Next->Pointer_Previous_Item = Pointer_List_Item_Previous;
+
+	// Release item resources
+	free(Pointer_List_Item->Pointer_Data);
+	free(Pointer_List_Item);
+
+	// Update list information
+	Pointer_List->Items_Count--;
+	assert(Pointer_List->Items_Count >= 0);
 }
 
 void ListDisplay(TList *Pointer_List, char *Pointer_String_Name, void (*ListDisplayItemData)(void *Pointer_Item_Data))

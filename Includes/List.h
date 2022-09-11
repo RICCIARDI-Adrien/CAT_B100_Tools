@@ -11,6 +11,7 @@
 typedef struct TListItem
 {
 	void *Pointer_Data;
+	struct TListItem *Pointer_Previous_Item;
 	struct TListItem *Pointer_Next_Item;
 } TListItem;
 
@@ -42,6 +43,12 @@ void ListAddItem(TList *Pointer_List, void *Pointer_Item_Data);
  * @warning This function assumes that the list has already been initialized. Passing an uninitialized list can lead to a crash.
  */
 void ListClear(TList *Pointer_List);
+
+/** Remove the specified item from the list.
+ * @param Pointer_List The list to remove the item from.
+ * @param Pointer_List_Item The item to remove. All item resources are automatically freed.
+ */
+void ListClearItem(TList *Pointer_List, TListItem *Pointer_List_Item);
 
 /** Display each list single item.
  * @param Pointer_List The list to display content.
