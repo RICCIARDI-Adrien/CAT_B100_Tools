@@ -984,6 +984,71 @@ Exit:
 	return Return_Value;
 }
 
+/** Remove the "." and ".." entries from the provided list. This avoids adding additional code in the functions to handle those special cases.
+ * @param Pointer_List All "." and ".." entries found in this list will be removed.
+ */
+static void MMSRemoveSpecialDirectoryEntriesFromFilesList(TList *Pointer_List)
+{
+	TListItem *Pointer_List_Item, *Pointer_List_Item_Next;
+	TFileManagerFileListItem *Pointer_File_List_Item;
+
+	Pointer_List_Item = Pointer_List->Pointer_Head;
+	while (Pointer_List_Item != NULL)
+	{
+		Pointer_File_List_Item = Pointer_List_Item->Pointer_Data;
+
+		// Does this item contain a special directory entry ?
+		if ((strcmp(Pointer_File_List_Item->String_File_Name, ".") == 0) || (strcmp(Pointer_File_List_Item->String_File_Name, "..") == 0))
+		{
+			Pointer_List_Item_Next = Pointer_List_Item->Pointer_Next_Item; // Keep the address of the item following the one to remove
+			ListClearItem(Pointer_List, Pointer_List_Item);
+			Pointer_List_Item = Pointer_List_Item_Next;
+		}
+		else Pointer_List_Item = Pointer_List_Item->Pointer_Next_Item;
+	}
+}
+
+/** Compare the processed messages list (this list contains the non archived message files that have been already retrieved) and the list of all the files found in the MMS directory (this list will also contain the archived MMS files). This function will remove the already processed files from the found files list, so at the end there will be only the archived files in this list.
+ * @param Pointer_String_Drive The phone drive (C:, E:, ...) the found messages list has been retrieved from. This is needed to create absolute file names because the found messages list contains only the relative names of the files. Using absolute file names avoid any collision if more than one drive contains the same file name.
+ * @param Pointer_List_Processed_Messages The list containing the already processed message file names. The "." and ".." file name entries must have been removed from the list.
+ * @param Pointer_List_Found_Messages The list containing all the file names found in the MMS directory of this specific drive. The "." and ".." file name entries must have been removed from the list.
+ */
+static void MMSFilterArchivedMessagesList(char *Pointer_String_Drive, TList *Pointer_List_Processed_Messages, TList *Pointer_List_Found_Messages)
+{
+	TListItem *Pointer_List_Item_Processed_Messages, *Pointer_List_Item_Found_Messages;
+	TFileManagerFileListItem *Pointer_File_List_Item_Processed_Messages, *Pointer_File_List_Item_Found_Messages;
+	char String_Absolute_File_Name[512];
+
+	// Doing the outer loop with the processed messages list forces to create the absolute file path of each found file for all iterations, but on the other way allows to more easily manage the removal of found list items
+	Pointer_List_Item_Processed_Messages = Pointer_List_Processed_Messages->Pointer_Head;
+	while (Pointer_List_Item_Processed_Messages != NULL)
+	{
+		Pointer_File_List_Item_Processed_Messages = Pointer_List_Item_Processed_Messages->Pointer_Data;
+
+		// Search in all found messages if one matches the processed message
+		Pointer_List_Item_Found_Messages = Pointer_List_Found_Messages->Pointer_Head;
+		LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Searching for the processed file \"%s\" in the found files list.\n", Pointer_File_List_Item_Processed_Messages->String_File_Name);
+		while (Pointer_List_Item_Found_Messages != NULL)
+		{
+			Pointer_File_List_Item_Found_Messages = Pointer_List_Item_Found_Messages->Pointer_Data;
+
+			// Create the full name of the found file, so we can use strcmp() to compare both lists content
+			snprintf(String_Absolute_File_Name, sizeof(String_Absolute_File_Name), "%s\\@mms\\mms_pdu\\%s", Pointer_String_Drive, Pointer_File_List_Item_Found_Messages->String_File_Name);
+
+			if (strcmp(Pointer_File_List_Item_Processed_Messages->String_File_Name, String_Absolute_File_Name) == 0)
+			{
+				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "This MMS has already been processed, removing it from the list.\n");
+				ListClearItem(Pointer_List_Found_Messages, Pointer_List_Item_Found_Messages);
+				break;
+			}
+
+			Pointer_List_Item_Found_Messages = Pointer_List_Item_Found_Messages->Pointer_Next_Item;
+		}
+
+		Pointer_List_Item_Processed_Messages = Pointer_List_Item_Processed_Messages->Pointer_Next_Item;
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 // Public functions
 //-------------------------------------------------------------------------------------------------
@@ -1017,10 +1082,13 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 	};
 	int Messages_Count, File_Descriptor, i, Return_Value = -1;
 	unsigned int Location_Index, Device_Index;
-	char String_Messages_Payload_Directory[128], String_Database_File[128], String_Temporary[256];
+	char String_Messages_Payload_Directory[128], String_Database_File[128], String_Temporary[768];
 	TMMSStorageLocation Storage_Location;
 	TMMSStorageDevice Storage_Device;
 	TMMSDatabaseRecord Database_Record;
+	TList List_Processed_MMS_Files, List_Drives, List_Found_MMS_Files;
+	TListItem *Pointer_List_Item_Drive, *Pointer_List_Item;
+	TFileManagerFileListItem *Pointer_File_List_Item_Drive, *Pointer_File_List_Item;
 
 	// Create output directories
 	if (UtilityCreateDirectory("Output/MMS") != 0) return -1;
@@ -1033,12 +1101,17 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 		// Create the directory if it does not exist yet
 		if (UtilityCreateDirectory(String_Temporary) != 0) return -1;
 	}
+	// Archived messages are working separately, so the output directory must be created by hand
+	if (UtilityCreateDirectory("Output/MMS/Archives") != 0) return -1;
+
+	ListInitialize(&List_Processed_MMS_Files);
 
 	// Try all possible messages storage combinations
 	for (Device_Index = 0; Device_Index < UTILITY_ARRAY_SIZE(Storage_Device_Lookup_Table); Device_Index++)
 	{
 		for (Location_Index = 0; Location_Index < UTILITY_ARRAY_SIZE(Storage_Location_Lookup_Table); Location_Index++)
 		{
+			// Determine whether some messages are stored in this location
 			Storage_Location = Storage_Location_Lookup_Table[Location_Index];
 			Storage_Device = Storage_Device_Lookup_Table[Device_Index];
 			if (MMSGetStorageInformation(Serial_Port_ID, Storage_Location, Storage_Device, &Messages_Count, String_Messages_Payload_Directory, String_Database_File) != 0) return -1;
@@ -1051,7 +1124,7 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 			if (FileManagerDownloadFile(Serial_Port_ID, String_Database_File, MMS_DATABASE_FILE_NAME) != 0)
 			{
 				LOG("Error : could not download the MMS database file \"%s\" (storage location = %d, storage device = %d).\n", String_Database_File, Storage_Location, Storage_Device);
-				return -1;
+				goto Exit;
 			}
 
 			// Try to open the database file
@@ -1059,7 +1132,7 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 			if (File_Descriptor == -1)
 			{
 				LOG("Error : failed to open MMS database file \"%s\" (storage location = %d, storage device = %d, %s).\n", String_Database_File, Storage_Location, Storage_Device, strerror(errno));
-				return -1;
+				goto Exit;
 			}
 
 			// Extract each message information from the database
@@ -1075,6 +1148,7 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 				// Retrieve the MMS file
 				printf("Retrieving message %d/%d (%u bytes)...\n", i, Messages_Count, Database_Record.File_Size);
 				sprintf(String_Temporary, "%s\\%s", String_Messages_Payload_Directory, Database_Record.String_File_Name);
+				FileManagerListAddFile(&List_Processed_MMS_Files, String_Temporary, 0, 0); // Reuse the File Manager list items as we are dealing with files
 				if (FileManagerDownloadFile(Serial_Port_ID, String_Temporary, MMS_RAW_MMS_FILE_NAME) != 0)
 				{
 					LOG("Error : could not download the MMS file \"%s\" (storage location = %d, storage device = %d).\n", String_Temporary, Storage_Location, Storage_Device);
@@ -1096,10 +1170,77 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 		}
 	}
 
+	// Retrieve archived MMS, they are not referenced in the database files but they are stored in the MMS directories
+	// Start by retrieving all existing drives on the phone
+	if (FileManagerListDrives(Serial_Port_ID, &List_Drives) != 0)
+	{
+		LOG("Error : failed to retrieve the existing drives.\n");
+		goto Exit;
+	}
+
+	// Try all drives
+	Pointer_List_Item_Drive = List_Drives.Pointer_Head;
+	while (Pointer_List_Item_Drive != NULL)
+	{
+		// Get the drive name
+		Pointer_File_List_Item_Drive = Pointer_List_Item_Drive->Pointer_Data;
+		printf("Parsing drive \"%s\" for archived message(s).\n", Pointer_File_List_Item_Drive->String_File_Name);
+
+		// Find all existing MMS files in this drive
+		snprintf(String_Temporary, sizeof(String_Temporary), "%s\\@mms\\mms_pdu", Pointer_File_List_Item_Drive->String_File_Name);
+		if (FileManagerListDirectory(Serial_Port_ID, String_Temporary, &List_Found_MMS_Files) != 0)
+		{
+			ListClear(&List_Drives);
+			LOG("Error : could not retrieve the existing files in the directory \"%s\".\n", String_Temporary);
+			goto Exit;
+		}
+		MMSRemoveSpecialDirectoryEntriesFromFilesList(&List_Found_MMS_Files);
+
+		// Remove all MMS files that have already been extracted, the remaining ones are part of the archives and will be present in the List_Found_MMS_Files list
+		MMSFilterArchivedMessagesList(Pointer_File_List_Item_Drive->String_File_Name, &List_Processed_MMS_Files, &List_Found_MMS_Files);
+		printf("Found %d archived messages.\n", List_Found_MMS_Files.Items_Count);
+
+		// Try to extract all archived MMS
+		Pointer_List_Item = List_Found_MMS_Files.Pointer_Head;
+		i = 1;
+		while (Pointer_List_Item != NULL)
+		{
+			Pointer_File_List_Item = Pointer_List_Item->Pointer_Data;
+
+			// Create the name of the file to retrieve
+			printf("Retrieving message %d/%d...\n", i, List_Found_MMS_Files.Items_Count);
+			snprintf(String_Temporary, sizeof(String_Temporary), "%s\\@mms\\mms_pdu\\%s", Pointer_File_List_Item_Drive->String_File_Name, Pointer_File_List_Item->String_File_Name);
+			if (FileManagerDownloadFile(Serial_Port_ID, String_Temporary, MMS_RAW_MMS_FILE_NAME) != 0)
+			{
+				ListClear(&List_Drives);
+				ListClear(&List_Found_MMS_Files);
+				LOG("Error : could not download the archived MMS file \"%s\".\n", String_Temporary);
+				goto Exit;
+			}
+
+			// Extract payload from MMS
+			if (MMSProcessMessage(MMS_RAW_MMS_FILE_NAME, "Output/MMS/Archives") != 0)
+			{
+				ListClear(&List_Drives);
+				ListClear(&List_Found_MMS_Files);
+				LOG("Error : could not process the archived MMS file \"%s\".\n", String_Temporary);
+				goto Exit;
+			}
+
+			i++;
+			Pointer_List_Item = Pointer_List_Item->Pointer_Next_Item;
+		}
+		ListClear(&List_Found_MMS_Files);
+
+		Pointer_List_Item_Drive = Pointer_List_Item_Drive->Pointer_Next_Item;
+	}
+	ListClear(&List_Drives);
+
 	// Everything went fine
 	Return_Value = 0;
 
 Exit:
+	ListClear(&List_Processed_MMS_Files);
 	if (File_Descriptor != -1) close(File_Descriptor);
 	unlink(MMS_DATABASE_FILE_NAME);
 	unlink(MMS_RAW_MMS_FILE_NAME);
