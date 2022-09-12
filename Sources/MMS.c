@@ -621,7 +621,11 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 					MMSFormatPhoneNumber(String_Sender_Phone_Number);
 					LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Phone number is provided in From record : \"%s\".\n", String_Sender_Phone_Number);
 				}
-				else LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "The From record does not contain a phone number.\n");
+				else
+				{
+					strcpy(String_Sender_Phone_Number, "No_Number");
+					LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "The From record does not contain a phone number.\n");
+				}
 				break;
 
 			// Message class
