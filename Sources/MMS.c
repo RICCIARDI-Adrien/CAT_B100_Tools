@@ -469,7 +469,38 @@ Exit:
 	return Return_Value;
 }
 
-/** TODO */
+/** Keep only the phone number data in the string, remove any additional suffix.
+ * @param Pointer_String_Phone_Number The phone number string extracted from the MMS. On output, will contain the modified string. The string is modified in the same buffer and is granted to never be bigger than the original string, so a static allocation of this string is allowed.
+ */
+static void MMSFormatPhoneNumber(char *Pointer_String_Phone_Number)
+{
+	char Character, *Pointer_String;
+
+	// Parse the string until a non-allowed character is found
+	LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Processing the phone number string \"%s\".\n", Pointer_String_Phone_Number);
+	Pointer_String = Pointer_String_Phone_Number; // Use a second variable for the string to preserve the first one while not triggering any compiler warning when the debug logs are disabled
+	while (*Pointer_String != 0)
+	{
+		Character = *Pointer_String;
+
+		// Allow the '+' sign and the digit characters
+		if (Character != '+' && ((Character < '0') || (Character > '9')))
+		{
+			*Pointer_String = 0;
+			LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Changed the phone number string to \"%s\".\n", Pointer_String_Phone_Number);
+			break;
+		}
+
+		Pointer_String++;
+	}
+}
+
+/** Parse all fields of a MMS PDU and extract all attached files.
+ * @param Pointer_String_Raw_MMS_File_Path The absolute file name of the MMS PDU.
+ * @param Pointer_String_Output_Directory_Path Create this output directory and store all extracted message content to it.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
 static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Pointer_String_Output_Directory_Path)
 {
 	FILE *Pointer_File = NULL;
@@ -587,6 +618,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 				if (Byte == 128)
 				{
 					if (MMSReadStringField(Pointer_File, String_Sender_Phone_Number, sizeof(String_Sender_Phone_Number)) != 0) goto Exit;
+					MMSFormatPhoneNumber(String_Sender_Phone_Number);
 					LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Phone number is provided in From record : \"%s\".\n", String_Sender_Phone_Number);
 				}
 				else LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "The From record does not contain a phone number.\n");
@@ -1198,7 +1230,7 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 
 		// Remove all MMS files that have already been extracted, the remaining ones are part of the archives and will be present in the List_Found_MMS_Files list
 		MMSFilterArchivedMessagesList(Pointer_File_List_Item_Drive->String_File_Name, &List_Processed_MMS_Files, &List_Found_MMS_Files);
-		printf("Found %d archived messages.\n", List_Found_MMS_Files.Items_Count);
+		printf("Found %d archived message(s).\n", List_Found_MMS_Files.Items_Count);
 
 		// Try to extract all archived MMS
 		Pointer_List_Item = List_Found_MMS_Files.Pointer_Head;
