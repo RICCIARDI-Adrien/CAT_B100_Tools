@@ -4,10 +4,12 @@
  */
 #include <AT_Command.h>
 #include <errno.h>
+#include <File_Manager.h>
 #include <Log.h>
 #include <SMS.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <Utility.h>
 
 //-------------------------------------------------------------------------------------------------
@@ -21,6 +23,11 @@
 
 /** How many records to read from the phone. */
 #define SMS_RECORDS_MAXIMUM_COUNT 450 // This value is reported by the command AT+EQSI, it is set to 20 for the SIM storage and 450 for the mobile equipment storage
+
+/** The hardcoded path of the directory containing the archived SMS files. */
+#define SMS_ARCHIVED_MESSAGES_DIRECTORY_PATH "C:\\SMSArch"
+/** The temporary file used to store each archived message. */
+#define SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH "Output/SMS/Archive.tmp"
 
 //-------------------------------------------------------------------------------------------------
 // Private types
@@ -561,9 +568,14 @@ static int SMSWriteOutputMessageInformation(FILE *Pointer_Output_File, TSMSRecor
 int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 {
 	static TSMSRecord SMS_Records[SMS_RECORDS_MAXIMUM_COUNT];
-	int i, Return_Value = -1, j, Current_Record_Number;
-	FILE *Pointer_File_Inbox = NULL, *Pointer_File_Sent = NULL, *Pointer_File_Draft = NULL, *Pointer_File;
+	static char String_Temporary[16384], String_Temporary_2[16384]; // Should be enough for any SMS content, store the variable in the DATA section due to its size
+	int i, Return_Value = -1, j, Current_Record_Number, Archived_SMS_Count;
+	FILE *Pointer_File_Inbox = NULL, *Pointer_File_Sent = NULL, *Pointer_File_Draft = NULL, *Pointer_File_Archives = NULL, *Pointer_File;
 	TSMSRecord *Pointer_SMS_Record, *Pointer_Searched_SMS_Record;
+	TList List;
+	TListItem *Pointer_List_Item;
+	TFileManagerFileListItem *Pointer_File_List_Item;
+	size_t Read_Bytes_Count, Index_Source_String, Index_Destination_String;
 
 	// Read all possible records
 	printf("Retrieving all SMS records...\n");
@@ -598,6 +610,13 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 	if (Pointer_File_Draft == NULL)
 	{
 		LOG("Error : could not create the SMS \"Draft.txt\" file (%s).\n", strerror(errno));
+		goto Exit;
+	}
+	// Archives
+	Pointer_File_Archives = fopen("Output/SMS/Archives.txt", "w");
+	if (Pointer_File_Archives == NULL)
+	{
+		LOG("Error : could not create the SMS \"Archives.txt\" file (%s).\n", strerror(errno));
 		goto Exit;
 	}
 
@@ -677,12 +696,100 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 		}
 	}
 
+	// Retrieve archive files
+	if (FileManagerListDirectory(Serial_Port_ID, SMS_ARCHIVED_MESSAGES_DIRECTORY_PATH, &List) != 0)
+	{
+		LOG("Error : could not list the content of the archived SMS directory.\n");
+		goto Exit;
+	}
+	Archived_SMS_Count = List.Items_Count - 2; // Do not take the special directory entries ("." and "..") into account
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Archived message files found : %d.\n", Archived_SMS_Count);
+
+	// Process each archived SMS file
+	Pointer_List_Item = List.Pointer_Head;
+	i = 1;
+	while (Pointer_List_Item != NULL)
+	{
+		Pointer_File_List_Item = Pointer_List_Item->Pointer_Data;
+
+		// Bypass the special directory entries
+		if (strcmp(Pointer_File_List_Item->String_File_Name, ".") == 0) goto Next_Archived_File;
+		if (strcmp(Pointer_File_List_Item->String_File_Name, "..") == 0) goto Next_Archived_File;
+
+		// Retrieve the file
+		printf("Retrieving the archived SMS %d/%d...\n", i, Archived_SMS_Count);
+		i++;
+		snprintf(String_Temporary, sizeof(String_Temporary), SMS_ARCHIVED_MESSAGES_DIRECTORY_PATH "\\%s", Pointer_File_List_Item->String_File_Name);
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "File to retrieve : \"%s\".\n", String_Temporary);
+		if (FileManagerDownloadFile(Serial_Port_ID, String_Temporary, SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH) != 0)
+		{
+			LOG("Error : failed to retrieve the SMS file \"%s\".\n", String_Temporary);
+			goto Exit_Clear_List;
+		}
+
+		// Load the file in RAM
+		// Try to open the file
+		Pointer_File = fopen(SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, "r");
+		if (Pointer_File == NULL)
+		{
+			LOG("Error : failed to open the archived SMS temporary file \"%s\" (%s).\n", SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, strerror(errno));
+			goto Exit_Clear_List;
+		}
+		// Get the whole file content
+		Read_Bytes_Count = fread(String_Temporary, 1, sizeof(String_Temporary), Pointer_File);
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "File size : %zd.\n", Read_Bytes_Count);
+		if (Read_Bytes_Count <= 0)
+		{
+			LOG("Error : failed to load the content of the archived SMS temporary file \"%s\" (%s).\n", SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, strerror(errno));
+			fclose(Pointer_File);
+			goto Exit_Clear_List;
+		}
+		// This file is not needed anymore (do not delete it as it will be overwritten several times, delete the file only once when this function exits)
+		fclose(Pointer_File);
+
+		// Bypass the first two bytes that are unknown for now
+		if (Read_Bytes_Count < 2)
+		{
+			LOG("Error : the archived SMS temporary file size is too small, the file might be corrupted.\n");
+			goto Exit_Clear_List;
+		}
+		Read_Bytes_Count -= 2;
+
+		// Remove the leading zero characters
+		Index_Destination_String = 0;
+		for (Index_Source_String = 3; Index_Source_String < Read_Bytes_Count; Index_Source_String += 2)
+		{
+			String_Temporary_2[Index_Destination_String] = String_Temporary[Index_Source_String];
+			Index_Destination_String++;
+		}
+		String_Temporary_2[Index_Destination_String] = 0; // Make sure string is terminated
+		Index_Destination_String++;
+
+		// Convert the extended characters to UTF-8
+		if (UtilityConvertString(String_Temporary_2, String_Temporary, UTILITY_CHARACTER_SET_WINDOWS_1252, UTILITY_CHARACTER_SET_UTF8, Index_Destination_String, sizeof(String_Temporary)) < 0)
+		{
+			LOG("Error : failed to convert the archived SMS file to UTF-8.\n");
+			goto Exit_Clear_List;
+		}
+
+		// Append the message to the output file
+		fprintf(Pointer_File_Archives, "Message\n-------\n%s\n\n", String_Temporary);
+
+Next_Archived_File:
+		Pointer_List_Item = Pointer_List_Item->Pointer_Next_Item;
+	}
+
 	// Everything went fine
 	Return_Value = 0;
+	Pointer_File = NULL; // Tell the exit code that this file has already been closed
+
+Exit_Clear_List:
+	ListClear(&List);
 
 Exit:
 	if (Pointer_File_Inbox != NULL) fclose(Pointer_File_Inbox);
 	if (Pointer_File_Sent != NULL) fclose(Pointer_File_Sent);
 	if (Pointer_File_Draft != NULL) fclose(Pointer_File_Draft);
+	if (Pointer_File_Archives != NULL) fclose(Pointer_File_Archives);
 	return Return_Value;
 }
