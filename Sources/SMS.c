@@ -562,20 +562,128 @@ static int SMSWriteOutputMessageInformation(FILE *Pointer_Output_File, TSMSRecor
 	return 0;
 }
 
+/** Parse a archived SMS file (with a .a file extension) located at the path SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH to extract the message content.
+ * @param Pointer_String_Converted_Text On output, contain the message text converted to UTF-8. Make sure to provide a buffer big enough because the buffer size is not checked.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
+static int SMSExtractArchivedMessageText(char *Pointer_String_Converted_Text)
+{
+	static char String_Temporary[16384], String_Temporary_2[16384]; // Should be enough for any SMS content, store the variable in the DATA section due to its size
+	FILE *Pointer_File;
+	int Return_Value = -1, Length;
+	unsigned int i = 0;
+	unsigned char Bytes[2];
+	TUtilityCharacterSet Old_Character_Set = UTILITY_CHARACTER_SET_WINDOWS_1252, New_Character_Set, Character_Set;
+	size_t Read_Bytes_Count;
+
+	// Try to open the file
+	Pointer_File = fopen(SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, "r");
+	if (Pointer_File == NULL)
+	{
+		LOG("Error : failed to open the archived SMS temporary file \"%s\" (%s).\n", SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, strerror(errno));
+		return -1;
+	}
+
+	// Discard the first three bytes that are unknown for now
+	if (fread(String_Temporary, 1, 3, Pointer_File) != 3)
+	{
+		LOG("Error : failed to read the initial two bytes of the archived SMS file (%s).\n", strerror(errno));
+		goto Exit;
+	}
+
+	// Process the file one byte at a time
+	*Pointer_String_Converted_Text = 0; // Clear the destination string
+	while (i < sizeof(String_Temporary))
+	{
+		// Get the next byte
+		Read_Bytes_Count = fread(Bytes, 1, sizeof(Bytes), Pointer_File);
+		if (Read_Bytes_Count != sizeof(Bytes))
+		{
+			if (feof(Pointer_File)) break;
+			LOG("Error : failed to read from the archived SMS file (%s).\n", strerror(errno));
+			goto Exit;
+		}
+
+		// The second byte of each 16-bit character will determine how it will be converted
+		if (Bytes[1] == 0) New_Character_Set = UTILITY_CHARACTER_SET_WINDOWS_1252;
+		else New_Character_Set = UTILITY_CHARACTER_SET_UTF16_LITTLE_ENDIAN;
+
+		// Whenever the character set changes, the previous string must be converted
+		if ((i > 0) && (New_Character_Set != Old_Character_Set)) // Ignore conversion at the beginning of the execution, when the string is empty
+		{
+			// Terminate the string
+			String_Temporary[i] = 0;
+
+			// Select the character set the string was using (Old_Character_Set might not have been set yet, so it can't be used)
+			if (New_Character_Set == UTILITY_CHARACTER_SET_WINDOWS_1252) Character_Set = UTILITY_CHARACTER_SET_UTF16_LITTLE_ENDIAN;
+			else Character_Set = UTILITY_CHARACTER_SET_WINDOWS_1252;
+
+			// Convert the string to more standard UTF-8
+			Length = UtilityConvertString(String_Temporary, String_Temporary_2, Character_Set, UTILITY_CHARACTER_SET_UTF8, i, sizeof(String_Temporary_2));
+			if (Length < 0)
+			{
+				LOG("Error : could not convert the string to UTF-8. String character set index : %d.\n", Old_Character_Set);
+				goto Exit;
+			}
+			String_Temporary_2[Length] = 0; // Terminate the string
+
+			// Append the converted string to the result
+			strcat(Pointer_String_Converted_Text, String_Temporary_2);
+			i = 0;
+			Old_Character_Set = New_Character_Set;
+		}
+
+		// Append the appropriate bytes to the string
+		String_Temporary[i] = Bytes[0];
+		i++;
+		if (New_Character_Set == UTILITY_CHARACTER_SET_UTF16_LITTLE_ENDIAN)
+		{
+			String_Temporary[i] = Bytes[1];
+			i++;
+		}
+	}
+
+	// Make sure to convert the last remaining string (if any)
+	if (i > 0)
+	{
+		// Terminate the string
+		String_Temporary[i] = 0;
+
+		// Convert it to more standard UTF-8
+		Length = UtilityConvertString(String_Temporary, String_Temporary_2, New_Character_Set, UTILITY_CHARACTER_SET_UTF8, i, sizeof(String_Temporary_2));
+		if (Length < 0)
+		{
+			LOG("Error : could not convert the string to UTF-8. String character set index : %d.\n", Old_Character_Set);
+			goto Exit;
+		}
+		String_Temporary_2[Length] = 0; // Terminate the string
+
+		// Append the converted string to the result
+		strcat(Pointer_String_Converted_Text, String_Temporary_2);
+	}
+
+	// Everything went fine
+	Return_Value = 0;
+
+Exit:
+	fclose(Pointer_File);
+	return Return_Value;
+}
+
 //-------------------------------------------------------------------------------------------------
 // Public functions
 //-------------------------------------------------------------------------------------------------
 int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 {
 	static TSMSRecord SMS_Records[SMS_RECORDS_MAXIMUM_COUNT];
-	static char String_Temporary[16384], String_Temporary_2[16384]; // Should be enough for any SMS content, store the variable in the DATA section due to its size
+	static char String_Temporary[16384]; // Should be enough for any SMS content, store the variable in the DATA section due to its size
 	int i, Return_Value = -1, j, Current_Record_Number, Archived_SMS_Count;
 	FILE *Pointer_File_Inbox = NULL, *Pointer_File_Sent = NULL, *Pointer_File_Draft = NULL, *Pointer_File_Archives = NULL, *Pointer_File;
 	TSMSRecord *Pointer_SMS_Record, *Pointer_Searched_SMS_Record;
 	TList List;
 	TListItem *Pointer_List_Item;
 	TFileManagerFileListItem *Pointer_File_List_Item;
-	size_t Read_Bytes_Count, Index_Source_String, Index_Destination_String;
 
 	// Read all possible records
 	printf("Retrieving all SMS records...\n");
@@ -727,48 +835,10 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 			goto Exit_Clear_List;
 		}
 
-		// Load the file in RAM
-		// Try to open the file
-		Pointer_File = fopen(SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, "r");
-		if (Pointer_File == NULL)
+		// Retrieve the message content
+		if (SMSExtractArchivedMessageText(String_Temporary) != 0)
 		{
-			LOG("Error : failed to open the archived SMS temporary file \"%s\" (%s).\n", SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, strerror(errno));
-			goto Exit_Clear_List;
-		}
-		// Get the whole file content
-		Read_Bytes_Count = fread(String_Temporary, 1, sizeof(String_Temporary), Pointer_File);
-		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "File size : %zd.\n", Read_Bytes_Count);
-		if (Read_Bytes_Count <= 0)
-		{
-			LOG("Error : failed to load the content of the archived SMS temporary file \"%s\" (%s).\n", SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH, strerror(errno));
-			fclose(Pointer_File);
-			goto Exit_Clear_List;
-		}
-		// This file is not needed anymore (do not delete it as it will be overwritten several times, delete the file only once when this function exits)
-		fclose(Pointer_File);
-
-		// Bypass the first two bytes that are unknown for now
-		if (Read_Bytes_Count < 2)
-		{
-			LOG("Error : the archived SMS temporary file size is too small, the file might be corrupted.\n");
-			goto Exit_Clear_List;
-		}
-		Read_Bytes_Count -= 2;
-
-		// Remove the leading zero characters
-		Index_Destination_String = 0;
-		for (Index_Source_String = 3; Index_Source_String < Read_Bytes_Count; Index_Source_String += 2)
-		{
-			String_Temporary_2[Index_Destination_String] = String_Temporary[Index_Source_String];
-			Index_Destination_String++;
-		}
-		String_Temporary_2[Index_Destination_String] = 0; // Make sure string is terminated
-		Index_Destination_String++;
-
-		// Convert the extended characters to UTF-8
-		if (UtilityConvertString(String_Temporary_2, String_Temporary, UTILITY_CHARACTER_SET_WINDOWS_1252, UTILITY_CHARACTER_SET_UTF8, Index_Destination_String, sizeof(String_Temporary)) < 0)
-		{
-			LOG("Error : failed to convert the archived SMS file to UTF-8.\n");
+			LOG("Error : failed to extract the SMS message content.\n");
 			goto Exit_Clear_List;
 		}
 
@@ -787,6 +857,7 @@ Exit_Clear_List:
 	ListClear(&List);
 
 Exit:
+	unlink(SMS_ARCHIVED_MESSAGE_TEMPORARY_FILE_PATH);
 	if (Pointer_File_Inbox != NULL) fclose(Pointer_File_Inbox);
 	if (Pointer_File_Sent != NULL) fclose(Pointer_File_Sent);
 	if (Pointer_File_Draft != NULL) fclose(Pointer_File_Draft);
