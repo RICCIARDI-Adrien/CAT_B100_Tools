@@ -32,7 +32,7 @@
 //-------------------------------------------------------------------------------------------------
 // Private types
 //-------------------------------------------------------------------------------------------------
-/** All available message storage location. */
+/** All available message storage locations. */
 typedef enum
 {
 	SMS_STORAGE_LOCATION_INBOX = 1,
@@ -125,10 +125,10 @@ static void SMSUncompress7BitText(unsigned char *Pointer_Compressed_Text, int By
  */
 static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Set_Text, char *Pointer_String_Converted_Text)
 {
-	static unsigned char Extended_ASCII_Conversion_Table[256] = // Look-up table that converts custom CAT extended characters to Windows CP1252 extended characters
+	static unsigned char Extended_ASCII_Conversion_Table[256] = // Look-up table that converts SMS extended characters to Windows CP1252 extended characters, the default SMS alphabet is described in the GSM 03.38 Version 5.3.0 document section 6.2.1 (see also https://www.developershome.com/sms/gsmAlphabet.asp)
 	{
 		0x00, 0x00, 0x00, 0x00, 0xE8, 0xE9, 0xF9, 0x00, 0x00, 0xC7, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC6, 0xE6, 0x00, 0xC9,
+		0x00,  '_', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC6, 0xE6, 0x00, 0xC9,
 		 ' ',  '!',  '"',  '#',  '$',  '%',  '&', '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
 		 '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  ':',  ';',  '<',  '=',  '>',  '?',
 		 '@',  'A',  'B',  'C',  'D',  'E',  'F',  'G',  'H',  'I',  'J',  'K',  'L',  'M',  'N',  'O',
@@ -147,6 +147,7 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 		*Pointer_String_Temporary = Extended_ASCII_Conversion_Table[Byte]; // Use a non-signed variable as array index to avoid a compiler warning
 		Pointer_String_Temporary++;
 	}
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Text converted to Windows 1252 characters set : \"%s\".\n", Pointer_String_Custom_Character_Set_Text);
 
 	// Convert text to UTF-8
 	UtilityConvertString(Pointer_String_Custom_Character_Set_Text, Pointer_String_Converted_Text, UTILITY_CHARACTER_SET_WINDOWS_1252, UTILITY_CHARACTER_SET_UTF8, 0, SMS_TEXT_STRING_MAXIMUM_SIZE);
@@ -514,11 +515,12 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 
 		// Extract the text content with the custom character set for extended ASCII
 		SMSUncompress7BitText(&Temporary_Buffer[Text_Payload_Offset], Text_Payload_Bytes_Count, String_Temporary);
+		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Uncompressed text (may miss some SMS custom characters) : \"%s\".\n", String_Temporary);
 
 		// Convert custom character set to UTF-8
 		SMSConvert7BitExtendedASCII(String_Temporary, Pointer_SMS_Record->String_Text);
 	}
-	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Decoded text : \"%s\".\n", Pointer_SMS_Record->String_Text);
+	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Text converted to UTF-8 : \"%s\".\n", Pointer_SMS_Record->String_Text);
 
 	// Tell that record contains data
 	Pointer_SMS_Record->Is_Data_Present = 1;
