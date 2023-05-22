@@ -84,4 +84,14 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
  */
 int FileManagerDownloadDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_Absolute_Phone_Path, char *Pointer_String_Destination_PC_Path);
 
+/** Send a file from the PC to the phone.
+ * @param Serial_Port_ID The serial port the phone is connected to.
+ * @param Pointer_String_Source_PC_Path The file to send, located on the PC.
+ * @param Pointer_String_Absolute_Phone_Path The full path and name of the file to create on the phone. Directory separators are \ like on Windows.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ * @note If the file is already existing on the phone, its content will be overwritten.
+ */
+int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Source_PC_Path, char *Pointer_String_Absolute_Phone_Path);
+
 #endif

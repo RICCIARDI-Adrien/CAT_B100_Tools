@@ -247,7 +247,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	if (File_Descriptor == -1)
 	{
 		LOG("Error : could not create the output file \"%s\" (%s).\n", Pointer_String_Destination_PC_Path, strerror(errno));
-		return -1;
+		goto Exit;
 	}
 
 	// Convert the provided path to the character encoding the phone is expecting
@@ -259,12 +259,12 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	}
 
 	// Allow access to file manager
-	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=3") != 0) return -1;
-	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=3") != 0) goto Exit;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for "OK"
 	if (strcmp(String_Temporary, "OK") != 0)
 	{
 		LOG("Error : failed to send the AT command that enables the file manager.\n");
-		return -1;
+		goto Exit;
 	}
 
 	// Send the command
@@ -417,5 +417,114 @@ Next_File:
 Exit_Free_List:
 	ListClear(&List_Files);
 
+	return Return_Value;
+}
+
+int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Source_PC_Path, char *Pointer_String_Absolute_Phone_Path)
+{
+	int File_Descriptor = -1, Return_Value = -1, Size, Is_End_Of_File_Reached;
+	unsigned int Chunk_Size_Bytes;
+	char String_Temporary[512], String_Chunk_Command[1024];
+	unsigned char Buffer[512];
+	ssize_t Bytes_Count;
+
+	// Try to open the file to send to make sure it is existing
+	File_Descriptor = open(Pointer_String_Source_PC_Path, O_RDONLY);
+	if (File_Descriptor == -1)
+	{
+		LOG("Error : could not open the source file \"%s\". (%s)\n", Pointer_String_Source_PC_Path, strerror(errno));
+		return -1;
+	}
+
+	// Allow access to file manager
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=3") != 0) goto Exit;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		LOG("Error : failed to send the AT command that enables the file manager.\n");
+		goto Exit;
+	}
+
+	// Retrieve the maximum transfer chunk size
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+EFSW?") != 0) goto Exit;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for chunk size value
+	if (sscanf(String_Temporary, "+EFSW: %d", &Chunk_Size_Bytes) != 1)
+	{
+		LOG("Error : could not convert the transfer chunk size to a number.\n");
+		goto Exit;
+	}
+	Chunk_Size_Bytes /= 2; // The command returns the raw data size, where each byte is encoded by two hexadecimal characters, so divide by two to get the real payload size in bytes
+	LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Transfer chunk size in bytes : %d.\n", Chunk_Size_Bytes);
+	// Make sure the chunk transfer size won't overflow the internal buffer
+	if (Chunk_Size_Bytes > sizeof(Buffer))
+	{
+		Chunk_Size_Bytes = sizeof(Buffer);
+		LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Transfer chunk size is greater than the internal buffer, limiting it to %zu bytes.\n", sizeof(Buffer));
+	}
+
+	// Convert the provided path to the character encoding the phone is expecting
+	Size = UtilityConvertString(Pointer_String_Absolute_Phone_Path, Buffer, UTILITY_CHARACTER_SET_UTF8, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, 0, sizeof(Buffer));
+	if (Size == -1)
+	{
+		LOG("Error : could not convert the path \"%s\" to UTF-16.\n", Pointer_String_Absolute_Phone_Path);
+		goto Exit;
+	}
+
+	// Try to create and open the target file on the phone
+	strcpy(String_Temporary, "AT+EFSW=0,\"");
+	ATCommandConvertBinaryToHexadecimal(Buffer, Size, &String_Temporary[11]); // Concatenate the converted path right after the command
+	strcat(String_Temporary, "\"");
+	if (ATCommandSendCommand(Serial_Port_ID, String_Temporary) < 0) goto Exit;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		LOG("Error : failed to send the AT command that create and open the file.\n");
+		goto Exit;
+	}
+
+	// Send the file content
+	do
+	{
+		// Read a chunk from the source file
+		Bytes_Count = read(File_Descriptor, Buffer, Chunk_Size_Bytes);
+		if (Bytes_Count == -1)
+		{
+			LOG("Error : failed to read a chunk of data from the source file (%s).\n", strerror(errno));
+			goto Exit;
+		}
+
+		// Send a chunk of data
+		if (Bytes_Count < Chunk_Size_Bytes) Is_End_Of_File_Reached = 1;
+		else Is_End_Of_File_Reached = 0;
+		ATCommandConvertBinaryToHexadecimal(Buffer, Bytes_Count, String_Temporary); // The file payload is expected to be sent in hexadecimal
+		snprintf(String_Chunk_Command, sizeof(String_Chunk_Command), "AT+EFSW=2,%d,%zu,\"%s\"", Is_End_Of_File_Reached, Bytes_Count, String_Temporary);
+		if (ATCommandSendCommand(Serial_Port_ID, String_Chunk_Command) < 0) goto Exit;
+		if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for "OK"
+		if (strcmp(String_Temporary, "OK") != 0)
+		{
+			LOG("Error : failed to send the AT command that sends a chunk of the file.\n");
+			goto Exit;
+		}
+	} while (Bytes_Count == Chunk_Size_Bytes);
+
+	// Close the file
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+EFSW=1") != 0) goto Exit;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for chunk size value
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		LOG("Error : failed to send the AT command that closes the file.\n");
+		goto Exit;
+	}
+
+	// Everything went fine
+	Return_Value = 0;
+
+Exit:
+	if (File_Descriptor != -1) close(File_Descriptor);
+
+	// Disable file manager access, this seems mandatory to avoid hanging the whole AT communication (phone needs to be rebooted if this command is not issued, otherwise the AT communication is stuck)
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+ESUO=4") != 0) return -1;
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1; // Wait for "OK"
+	if (strcmp(String_Temporary, "OK") != 0) LOG("Error : failed to send the AT command that disables the file manager.\n");
 	return Return_Value;
 }

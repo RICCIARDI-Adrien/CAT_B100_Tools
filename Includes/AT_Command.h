@@ -38,7 +38,11 @@ int ATCommandSendCommand(TSerialPortID Serial_Port_ID, char *Pointer_String_Comm
  */
 int ATCommandConvertHexadecimalToBinary(char *Pointer_String_Hexadecimal, unsigned char *Pointer_Output_Buffer, unsigned int Output_Buffer_Size);
 
-/** TODO */
+/** Convert each byte of a binary stream to two-byte hexadecimal characters.
+ * @param Pointer_Buffer The buffer containing the binary data.
+ * @param Buffer_Size How many bytes to convert.
+ * @param Pointer_String_Hexadecimal On output, contain the data converted to hexadecimal. Make sure to provide enough room in this buffer as each input byte will be encoded as two bytes.
+ */
 void ATCommandConvertBinaryToHexadecimal(unsigned char *Pointer_Buffer, unsigned int Buffer_Size, char *Pointer_String_Hexadecimal);
 
 #endif
