@@ -55,17 +55,18 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 //-------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
-	char *Pointer_String_Serial_Port_Device, *Pointer_String_Argument_1 = NULL, *Pointer_String_Argument_2 = NULL;
+	char *Pointer_String_Serial_Port_Device, *Pointer_String_Argument_1 = NULL, *Pointer_String_Argument_2 = NULL, String_Date[12]; // The GCC standard tells that the date string is always 11-character long
 	TSerialPortID Serial_Port_ID = SERIAL_PORT_INVALID_ID;
 	int Return_Value = EXIT_FAILURE, i;
 	TMainCommand Command = MAIN_COMMANDS_COUNT; // This value is invalid, this allows to detect if no known command was provided by the user
 	TList List;
 
-	// Display program banner
-	printf("+---------------------------+\n"
-		"|      CAT B100 tools       |\n"
-		"| (C) 2022 Adrien RICCIARDI |\n"
-		"+---------------------------+\n");
+	// Display the program banner
+	strcpy(String_Date, __DATE__); // Get a copy of the literal date string, so it is easy to get an offset from the copy
+	printf("+--------------------------------+\n"
+		"|        CAT B100 tools          |\n"
+		"| (C) 2022-%s Adrien RICCIARDI |\n"
+		"+--------------------------------+\n", &String_Date[7]); // The year field is the last part of the date string, so there is no need to extract the year field from the string
 
 	// Check parameters
 	if (argc < 3)
