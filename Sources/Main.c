@@ -234,6 +234,7 @@ int main(int argc, char *argv[])
 			break;
 
 		case MAIN_COMMAND_GET_FILE:
+			printf("Downloading the file \"%s\" from the phone...\n", Pointer_String_Argument_1);
 			if (FileManagerDownloadFile(Serial_Port_ID, Pointer_String_Argument_1, Pointer_String_Argument_2) != 0)
 			{
 				printf("Error : could not get the file \"%s\".\n", Pointer_String_Argument_1);
@@ -243,6 +244,7 @@ int main(int argc, char *argv[])
 			break;
 
 		case MAIN_COMMAND_SEND_FILE:
+			printf("Sending the file \"%s\" to the phone...\n", Pointer_String_Argument_1);
 			if (FileManagerSendFile(Serial_Port_ID, Pointer_String_Argument_1, Pointer_String_Argument_2) != 0)
 			{
 				printf("Error : could not send the file \"%s\".\n", Pointer_String_Argument_1);
