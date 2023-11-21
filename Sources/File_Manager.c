@@ -88,13 +88,11 @@ int FileManagerListDrives(TSerialPortID Serial_Port_ID, TList *Pointer_List)
 			}
 
 			// Convert the drive name to UTF-8
-			Size = UtilityConvertString(String_Temporary, String_Drive_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Drive_Name));
-			if (Size < 0)
+			if (UtilityConvertString(String_Temporary, String_Drive_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Drive_Name)) < 0)
 			{
 				LOG("Error : could not convert a drive name from UTF-16 to UTF-8.\n");
 				goto Exit;
 			}
-			String_Drive_Name[Size] = 0; // Make sure the string is terminated
 
 			// Append the drive to the list
 			FileManagerListAddFile(Pointer_List, String_Drive_Name, 0, 0);
@@ -170,13 +168,11 @@ int FileManagerListDirectory(TSerialPortID Serial_Port_ID, char *Pointer_String_
 			}
 
 			// Convert the file name to UTF-8
-			Size = UtilityConvertString(String_Temporary, String_File_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_File_Name));
-			if (Size < 0)
+			if (UtilityConvertString(String_Temporary, String_File_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_File_Name)) < 0)
 			{
 				LOG("Error : could not convert a file name from UTF-16 to UTF-8.\n");
 				goto Exit;
 			}
-			String_File_Name[Size] = 0; // Make sure the string is terminated
 
 			// Append the file to the list
 			FileManagerListAddFile(Pointer_List, String_File_Name, File_Size, Flags);

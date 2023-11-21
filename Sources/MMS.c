@@ -123,13 +123,11 @@ static int MMSGetStorageInformation(TSerialPortID Serial_Port_ID, TMMSStorageLoc
 		return -1;
 	}
 	// Convert the string to UTF-8
-	Size = UtilityConvertString(Buffer, Pointer_String_Messages_Payload_Directory, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Temporary));
-	if (Size < 0)
+	if (UtilityConvertString(Buffer, Pointer_String_Messages_Payload_Directory, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Temporary)) < 0)
 	{
 		LOG("Error : could not convert the MMS payload directory from UTF-16 to UTF-8 (storage location = %d, storage device = %d).\n", Storage_Location, Storage_Device);
 		return -1;
 	}
-	Pointer_String_Messages_Payload_Directory[Size] = 0; // Make sure the string is terminated
 
 	// Extract database file
 	if (sscanf(String_Answer, "+EMMSFS: %*d, %*d, %*d, \"%*[0-9A-F]\", \"%[0-9A-F]\"", String_Temporary) != 1)
@@ -145,13 +143,11 @@ static int MMSGetStorageInformation(TSerialPortID Serial_Port_ID, TMMSStorageLoc
 		return -1;
 	}
 	// Convert the string to UTF-8
-	Size = UtilityConvertString(Buffer, Pointer_String_Database_File, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Temporary));
-	if (Size < 0)
+	if (UtilityConvertString(Buffer, Pointer_String_Database_File, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Temporary)) < 0)
 	{
 		LOG("Error : could not convert the MMS database file from UTF-16 to UTF-8 (storage location = %d, storage device = %d).\n", Storage_Location, Storage_Device);
 		return -1;
 	}
-	Pointer_String_Database_File[Size] = 0; // Make sure the string is terminated
 
 	return 0;
 }

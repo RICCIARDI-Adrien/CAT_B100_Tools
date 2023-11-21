@@ -43,7 +43,7 @@ int UtilityCreateDirectory(char *Pointer_Directory_Name);
  * @param Source_Character_Set The source character set to convert from.
  * @param Destination_Character_Set The destination character set to convert to.
  * @param Source_String_Size The source string size in bytes (not in characters). If set to 0, the string length will be automatically determined, make sure that the string does not contain NULL bytes in the middle of the data.
- * @param Destination_String_Size The maximum size in bytes of the output string.
+ * @param Destination_String_Size The maximum size in bytes of the output string. Make sure to have one additional byte of room for the terminating zero.
  * @return -1 if an error occurs,
  * @return A positive number on success, it indicates the destination string size in bytes.
  */

@@ -100,5 +100,12 @@ int UtilityConvertString(void *Pointer_String_Source, void *Pointer_String_Desti
 	else Return_Value = (int) (Destination_String_Size - Destination_String_Available_Bytes); // Determine how many bytes of the destination buffer have been used
 	iconv_close(Conversion_Descriptor);
 
+	// Make sure the converted string is terminated
+	if (Return_Value >= 0)
+	{
+		Pointer_String_Source_Characters = Pointer_String_Destination;
+		Pointer_String_Source_Characters[Return_Value] = 0;
+	}
+
 	return Return_Value;
 }

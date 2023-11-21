@@ -573,7 +573,7 @@ static int SMSExtractArchivedMessageText(char *Pointer_String_Converted_Text)
 {
 	static char String_Temporary[16384], String_Temporary_2[16384]; // Should be enough for any SMS content, store the variable in the DATA section due to its size
 	FILE *Pointer_File;
-	int Return_Value = -1, Length;
+	int Return_Value = -1;
 	unsigned int i = 0;
 	unsigned char Bytes[2];
 	TUtilityCharacterSet Old_Character_Set = UTILITY_CHARACTER_SET_WINDOWS_1252, New_Character_Set, Character_Set;
@@ -622,13 +622,11 @@ static int SMSExtractArchivedMessageText(char *Pointer_String_Converted_Text)
 			else Character_Set = UTILITY_CHARACTER_SET_WINDOWS_1252;
 
 			// Convert the string to more standard UTF-8
-			Length = UtilityConvertString(String_Temporary, String_Temporary_2, Character_Set, UTILITY_CHARACTER_SET_UTF8, i, sizeof(String_Temporary_2));
-			if (Length < 0)
+			if (UtilityConvertString(String_Temporary, String_Temporary_2, Character_Set, UTILITY_CHARACTER_SET_UTF8, i, sizeof(String_Temporary_2)) < 0)
 			{
 				LOG("Error : could not convert the string to UTF-8. String character set index : %d.\n", Old_Character_Set);
 				goto Exit;
 			}
-			String_Temporary_2[Length] = 0; // Terminate the string
 
 			// Append the converted string to the result
 			strcat(Pointer_String_Converted_Text, String_Temporary_2);
@@ -653,13 +651,11 @@ static int SMSExtractArchivedMessageText(char *Pointer_String_Converted_Text)
 		String_Temporary[i] = 0;
 
 		// Convert it to more standard UTF-8
-		Length = UtilityConvertString(String_Temporary, String_Temporary_2, New_Character_Set, UTILITY_CHARACTER_SET_UTF8, i, sizeof(String_Temporary_2));
-		if (Length < 0)
+		if (UtilityConvertString(String_Temporary, String_Temporary_2, New_Character_Set, UTILITY_CHARACTER_SET_UTF8, i, sizeof(String_Temporary_2)) < 0)
 		{
 			LOG("Error : could not convert the string to UTF-8. String character set index : %d.\n", Old_Character_Set);
 			goto Exit;
 		}
-		String_Temporary_2[Length] = 0; // Terminate the string
 
 		// Append the converted string to the result
 		strcat(Pointer_String_Converted_Text, String_Temporary_2);
