@@ -49,4 +49,9 @@ int UtilityCreateDirectory(char *Pointer_Directory_Name);
  */
 int UtilityConvertString(void *Pointer_String_Source, void *Pointer_String_Destination, TUtilityCharacterSet Source_Character_Set, TUtilityCharacterSet Destination_Character_Set, size_t Source_String_Size, size_t Destination_String_Size);
 
+/** Remove the leading double zeros of a phone number is any.
+ * @param Pointer_String_Number On input, the number to normalize. On output, the normalized number (the normalized number length is always less or equal to the original number length).
+ */
+void UtilityNormalizePhoneNumber(char *Pointer_String_Number);
+
 #endif

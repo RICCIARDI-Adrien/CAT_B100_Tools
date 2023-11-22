@@ -109,3 +109,19 @@ int UtilityConvertString(void *Pointer_String_Source, void *Pointer_String_Desti
 
 	return Return_Value;
 }
+
+void UtilityNormalizePhoneNumber(char *Pointer_String_Number)
+{
+	char String_Temporary[32];
+
+	// Do nothing if the provided string is empty
+	if (Pointer_String_Number[0] == 0) return;
+
+	// Discard the initial double zeros if any
+	if ((strlen(Pointer_String_Number) >= 13) && (Pointer_String_Number[0] == '0') && (Pointer_String_Number[1] == '0'))
+	{
+		strncpy(String_Temporary, &Pointer_String_Number[2], sizeof(String_Temporary) - 1); // Keep room for the terminating zero
+		String_Temporary[sizeof(String_Temporary) - 1] = 0; // Make sure the string is terminated
+		strcpy(Pointer_String_Number, String_Temporary);
+	}
+}

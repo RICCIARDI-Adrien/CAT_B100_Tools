@@ -38,7 +38,7 @@ static int Phone_Book_Entries_Count;
  */
 static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Index, TPhoneBookEntry *Pointer_Entry)
 {
-	char String_Temporary[512], String_Number[128], String_Name[448], *Pointer_String_Answer, Character;
+	char String_Temporary[512], String_Name[448], *Pointer_String_Answer, Character;
 	size_t i;
 
 	// Send the entry reading command
@@ -90,19 +90,16 @@ static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Inde
 		}
 		Pointer_String_Answer++; // By incrementing the string pointer before checking for the ending double quote, the double quote character is "absorbed" to ease the following string extraction steps
 		if (Character == '"') break;
-		String_Number[i] = Character;
+		Pointer_Entry->String_Number[i] = Character;
 		i++;
-		if (i == sizeof(String_Number))
+		if (i == sizeof(Pointer_Entry->String_Number))
 		{
 			LOG("Error : there is not enough room in the phone number string to store the entry %d number.\n", Entry_Index);
 			return -1;
 		}
 	}
-	String_Number[i] = 0; // Add the terminating zero
-	// Discard the initial double zeros if any, as all numbers provided by the phone start directly with the country prefix
-	if ((strlen(String_Number) >= 13) && (String_Number[0] == '0') && (String_Number[1] == '0')) i = 2; // Bypass the initial double zeros
-	else i = 0;
-	strcpy(Pointer_Entry->String_Number, &String_Number[i]);
+	Pointer_Entry->String_Number[i] = 0; // Add the terminating zero
+	UtilityNormalizePhoneNumber(Pointer_Entry->String_Number); // Discard the initial double zeros if any, as all numbers provided by the phone start directly with the country prefix
 	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "Extracted phone number string (initial double zeros have been removed if any) : \"%s\".\n", Pointer_Entry->String_Number);
 
 	// Go up to the third opening double quote
