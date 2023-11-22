@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <File_Manager.h>
 #include <Log.h>
+#include <Phone_Book.h>
 #include <SMS.h>
 #include <stdio.h>
 #include <string.h>
@@ -537,11 +538,17 @@ static int SMSDownloadSingleRecord(TSerialPortID Serial_Port_ID, int SMS_Number,
 static int SMSWriteOutputMessageInformation(FILE *Pointer_Output_File, TSMSRecord *Pointer_SMS_Record)
 {
 	char String_Temporary[256], String_Temporary_2[32];
+	int Result;
+
+	// Try to find the name of the sender
+	Result = PhoneBookGetNameFromNumber(Pointer_SMS_Record->String_Phone_Number, String_Temporary_2);
+	if (Result == 0) LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "No matching name was found for the phone number \"%s\".\n", Pointer_SMS_Record->String_Phone_Number);
+	else LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "The matching name \"%s\" was found for the phone number \"%s\".\n", String_Temporary_2, Pointer_SMS_Record->String_Phone_Number);
 
 	// Write phone number
 	if (Pointer_SMS_Record->Message_Storage_Location == SMS_STORAGE_LOCATION_INBOX) strcpy(String_Temporary, "From : ");
 	else strcpy(String_Temporary, "To : ");
-	strcat(String_Temporary, Pointer_SMS_Record->String_Phone_Number);
+	strcat(String_Temporary, String_Temporary_2);
 	strcat(String_Temporary, "\n");
 
 	// Write date if any
@@ -682,6 +689,9 @@ int SMSDownloadAll(TSerialPortID Serial_Port_ID)
 	TList List;
 	TListItem *Pointer_List_Item;
 	TFileManagerFileListItem *Pointer_File_List_Item;
+
+	printf("Retrieving phone book information to match with SMS phone numbers...\n");
+	if (PhoneBookReadAllEntries(Serial_Port_ID) < 0) goto Exit;
 
 	// Read all possible records
 	printf("Retrieving all SMS records...\n");

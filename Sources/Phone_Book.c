@@ -293,6 +293,8 @@ Exit_Number_Not_Found:
 	return 0;
 
 Exit_Number_Found:
-	strcpy(Pointer_String_Name, Phone_Book_Entries[Index].String_Name);
+	// If the number was found but the name is empty, still return the phone number as the name
+	if (Phone_Book_Entries[Index].String_Name[0] == 0) strcpy(Pointer_String_Name, Pointer_String_Number);
+	else strcpy(Pointer_String_Name, Phone_Book_Entries[Index].String_Name);
 	return 1;
 }
