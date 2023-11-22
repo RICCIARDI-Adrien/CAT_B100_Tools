@@ -205,6 +205,9 @@ static void SMSExtractHeaderPhoneNumber(unsigned char **Pointer_Pointer_Message_
 
 		// Terminate the string
 		*Pointer_String_Phone_Number = 0;
+
+		// Discard double zeros prefix if any
+		UtilityNormalizePhoneNumber(Pointer_SMS_Record->String_Phone_Number);
 	}
 	// No phone number was provided, make sure a string is present to tell that
 	else strcpy(Pointer_String_Phone_Number, "<Unspecified>");
