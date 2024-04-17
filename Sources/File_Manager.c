@@ -237,6 +237,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 	unsigned char Buffer[512];
 	char String_Temporary[512], String_Payload[512];
 	int File_Descriptor = -1, Return_Value = -1, Size, Result, Read_Index;
+	unsigned int Read_Bytes_Count = 0;
 
 	// Try to create the output file first to make sure it can be accessed
 	File_Descriptor = open(Pointer_String_Destination_PC_Path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -288,6 +289,7 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 			}
 
 			// Make sure the chunk size won't exceed the destination buffer
+			Read_Bytes_Count += Size; // Update the read bytes variable just before modifying the Size variable
 			Size *= 2; // The chunk size represents the final size in bytes, however each byte is encoded by two hexadecimal characters, so take this into account
 			if (Size > (int) sizeof(String_Payload))
 			{
@@ -318,6 +320,9 @@ int FileManagerDownloadFile(TSerialPortID Serial_Port_ID, char *Pointer_String_A
 				LOG("Error : could not write the file chunk payload to the output file (%s).\n", strerror(errno));
 				goto Exit;
 			}
+
+			// Display progress for user
+			printf("Progress : %u bytes.\r", Read_Bytes_Count);
 		}
 	} while (strcmp(String_Temporary, "OK") != 0);
 
