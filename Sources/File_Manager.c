@@ -428,6 +428,7 @@ int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Sourc
 	char String_Temporary[512], String_Chunk_Command[1024];
 	unsigned char Buffer[512];
 	ssize_t Bytes_Count;
+	size_t Written_Bytes_Count = 0;
 
 	// Try to open the file to send to make sure it is existing
 	File_Descriptor = open(Pointer_String_Source_PC_Path, O_RDONLY);
@@ -493,6 +494,7 @@ int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Sourc
 			LOG("Error : failed to read a chunk of data from the source file (%s).\n", strerror(errno));
 			goto Exit;
 		}
+		Written_Bytes_Count += Bytes_Count;
 
 		// Send a chunk of data
 		if (Bytes_Count < Chunk_Size_Bytes) Is_End_Of_File_Reached = 1;
@@ -506,6 +508,9 @@ int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Sourc
 			LOG("Error : failed to send the AT command that sends a chunk of the file.\n");
 			goto Exit;
 		}
+
+		// Display progress for user
+		printf("Progress : %zu bytes.\r", Written_Bytes_Count);
 	} while (Bytes_Count == Chunk_Size_Bytes);
 
 	// Close the file
