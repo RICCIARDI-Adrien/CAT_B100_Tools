@@ -128,14 +128,14 @@ static void SMSConvert7BitExtendedASCII(char *Pointer_String_Custom_Character_Se
 {
 	static unsigned char Extended_ASCII_Conversion_Table[256] = // Look-up table that converts SMS extended characters to Windows CP1252 extended characters, the default SMS alphabet is described in the GSM 03.38 Version 5.3.0 document section 6.2.1 (see also https://www.developershome.com/sms/gsmAlphabet.asp)
 	{
-		0x00, 0x00, 0x00, 0x00, 0xE8, 0xE9, 0xF9, 0x00, 0x00, 0xC7, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00,  '_', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC6, 0xE6, 0x00, 0xC9,
-		 ' ',  '!',  '"',  '#',  '$',  '%',  '&', '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
+		 '@', 0xA3,  '$', 0xA5, 0xE8, 0xE9, 0xF9, 0xEC, 0xF2, 0xC7, '\n', 0xD8, 0xF8, '\r', 0xC5, 0xE5,
+		0x86,  '_', 0x86, 0x86, 0x86, 0x86, 0x86, 0x86, 0x86, 0x86, 0x86, 0x86, 0xC6, 0xE6, 0xDF, 0xC9,
+		 ' ',  '!',  '"',  '#', 0xA4,  '%',  '&', '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
 		 '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  ':',  ';',  '<',  '=',  '>',  '?',
-		 '@',  'A',  'B',  'C',  'D',  'E',  'F',  'G',  'H',  'I',  'J',  'K',  'L',  'M',  'N',  'O',
-		 'P',  'Q',  'R',  'S',  'T',  'U',  'V',  'W',  'X',  'Y',  'Z',  '[', '\\',  ']',  '^',  '_',
-		 '`',  'a',  'b',  'c',  'd',  'e',  'f',  'g',  'h',  'i',  'j',  'k',  'l',  'm',  'n',  'o',
-		 'p',  'q',  'r',  's',  't',  'u',  'v',  'w',  'x',  'y',  'z',  '{',  '|',  '}',  '~', 0xE0
+		0xA1,  'A',  'B',  'C',  'D',  'E',  'F',  'G',  'H',  'I',  'J',  'K',  'L',  'M',  'N',  'O',
+		 'P',  'Q',  'R',  'S',  'T',  'U',  'V',  'W',  'X',  'Y',  'Z', 0xC4, 0xD6, 0xD1, 0xDC, 0xA7,
+		0xBF,  'a',  'b',  'c',  'd',  'e',  'f',  'g',  'h',  'i',  'j',  'k',  'l',  'm',  'n',  'o',
+		 'p',  'q',  'r',  's',  't',  'u',  'v',  'w',  'x',  'y',  'z', 0xE4, 0xF6, 0xF1, 0xFC, 0xE0
 	};
 	unsigned char Byte;
 	char *Pointer_String_Temporary;
