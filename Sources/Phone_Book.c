@@ -40,6 +40,7 @@ static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Inde
 {
 	char String_Temporary[512], String_Name[448], *Pointer_String_Answer, Character;
 	size_t i;
+	int Length;
 
 	// Send the entry reading command
 	sprintf(String_Temporary, "AT+CPBR=%d", Entry_Index);
@@ -135,8 +136,14 @@ static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Inde
 	}
 	String_Name[i] = 0; // Add the terminating zero
 	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "Extracted raw (unconverted) phone book name string : \"%s\".\n", String_Name);
-	// The string is encoded with an uncommon character set, convert to standard UTF-8
-	if (UtilityConvertString(String_Name, Pointer_Entry->String_Name, UTILITY_CHARACTER_SET_WINDOWS_1252, UTILITY_CHARACTER_SET_UTF8, 0, sizeof(Pointer_Entry->String_Name)) < 0)
+	// The string is hex-encoded, convert it to binary
+	Length = ATCommandConvertHexadecimalToBinary(String_Name, (unsigned char *) String_Temporary, sizeof(String_Temporary));
+	if (Length < 0)
+	{
+		LOG("Error : failed to convert the phone book name string from hexadecimal to binary when reading entry %d.\n", Entry_Index);
+		return -1;
+	}
+	if (UtilityConvertString(String_Temporary, Pointer_Entry->String_Name, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Length, sizeof(Pointer_Entry->String_Name)) < 0)
 	{
 		LOG("Error : failed to convert the phone book name string to UTF-8 when reading entry %d.\n", Entry_Index);
 		return -1;
@@ -199,6 +206,19 @@ int PhoneBookReadAllEntries(TSerialPortID Serial_Port_ID)
 	if (strcmp(String_Answer, "OK") != 0)
 	{
 		LOG("Error : failed to send the command to select the phone internal phone book.\n");
+		return -1;
+	}
+
+	// Select the UTF-16 character set for the contact names
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+CSCS=\"UCS2\"") != 0)
+	{
+		LOG("Error : failed to select the UTF-16 character set for the contact names.\n");
+		return -1;
+	}
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
+	if (strcmp(String_Answer, "OK") != 0)
+	{
+		LOG("Error : failed to send the command to select the UTF-16 character set for the contact names.\n");
 		return -1;
 	}
 
