@@ -11,4 +11,4 @@ debug: CFLAGS += -g
 debug: all
 
 cppcheck:
-	cppcheck -I Includes Sources
+	cppcheck --check-level=exhaustive -I Includes Sources
