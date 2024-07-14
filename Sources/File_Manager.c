@@ -450,13 +450,13 @@ int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Sourc
 	// Retrieve the maximum transfer chunk size
 	if (ATCommandSendCommand(Serial_Port_ID, "AT+EFSW?") != 0) goto Exit;
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for chunk size value
-	if (sscanf(String_Temporary, "+EFSW: %d", &Chunk_Size_Bytes) != 1)
+	if (sscanf(String_Temporary, "+EFSW: %u", &Chunk_Size_Bytes) != 1)
 	{
 		LOG("Error : could not convert the transfer chunk size to a number.\n");
 		goto Exit;
 	}
 	Chunk_Size_Bytes /= 2; // The command returns the raw data size, where each byte is encoded by two hexadecimal characters, so divide by two to get the real payload size in bytes
-	LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Transfer chunk size in bytes : %d.\n", Chunk_Size_Bytes);
+	LOG_DEBUG(FILE_MANAGER_IS_DEBUG_ENABLED, "Transfer chunk size in bytes : %u.\n", Chunk_Size_Bytes);
 	// Make sure the chunk transfer size won't overflow the internal buffer
 	if (Chunk_Size_Bytes > sizeof(Buffer))
 	{
@@ -500,7 +500,7 @@ int FileManagerSendFile(TSerialPortID Serial_Port_ID, char *Pointer_String_Sourc
 		if (Bytes_Count < Chunk_Size_Bytes) Is_End_Of_File_Reached = 1;
 		else Is_End_Of_File_Reached = 0;
 		ATCommandConvertBinaryToHexadecimal(Buffer, Bytes_Count, String_Temporary); // The file payload is expected to be sent in hexadecimal
-		snprintf(String_Chunk_Command, sizeof(String_Chunk_Command), "AT+EFSW=2,%d,%zu,\"%s\"", Is_End_Of_File_Reached, Bytes_Count, String_Temporary);
+		snprintf(String_Chunk_Command, sizeof(String_Chunk_Command), "AT+EFSW=2,%d,%zd,\"%s\"", Is_End_Of_File_Reached, Bytes_Count, String_Temporary);
 		if (ATCommandSendCommand(Serial_Port_ID, String_Chunk_Command) < 0) goto Exit;
 		if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) goto Exit; // Wait for "OK"
 		if (strcmp(String_Temporary, "OK") != 0)
