@@ -254,16 +254,14 @@ static int SMSDecodeRecordHeader(unsigned char *Pointer_Message_Buffer, TSMSReco
 	}
 	LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "SMS Message-Type-Indicator : %s.\n", Is_SMS_Deliver_Message_Type ? "SMS-DELIVER" : "SMS-SUBMIT");
 
-	// Is the validity period field present on a SMS-SUBMIT message ?
+	// Manage submitted-only message fields
 	if (!Is_SMS_Deliver_Message_Type)
 	{
+		// Is the validity period field present on a SMS-SUBMIT message ?
 		Validity_Period_Format = (First_Message_Byte >> 3) & 0x03;
 		LOG_DEBUG(SMS_IS_DEBUG_ENABLED, "Validity period format : %d.\n", Validity_Period_Format);
-	}
 
-	// Bypass the Message-Reference byte
-	if (!Is_SMS_Deliver_Message_Type)
-	{
+		// Bypass the Message-Reference byte
 		Pointer_Message_Buffer++;
 		Text_Payload_Offset++;
 	}
