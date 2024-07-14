@@ -549,7 +549,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x03:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content location record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Content type
 			case 0x04:
@@ -591,13 +591,13 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x07:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Delivery time record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Expiry
 			case 0x08:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Expiry record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// From
 			case 0x09:
@@ -653,7 +653,7 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x0E:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Message size record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Priority
 			case 0x0F:
@@ -671,25 +671,25 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x11:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Report allowed record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Response status
 			case 0x12:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Response status record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Response text
 			case 0x13:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Response text record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Sender visibility
 			case 0x14:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Sender visibility record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Status
 			case 0x15:
@@ -719,13 +719,13 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x19:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Retrieve status record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Retrieve text
 			case 0x1A:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Retrieve text record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Read status
 			case 0x1B:
@@ -748,133 +748,133 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x1D:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Reply charging deadline record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Reply charging ID
 			case 0x1E:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Reply charging ID record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Reply charging size
 			case 0x1F:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Reply charging size record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Previously sent by
 			case 0x20:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Previously sent by record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Previously sent date
 			case 0x21:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Previously sent date record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Store
 			case 0x22:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Store record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// MM state
 			case 0x23:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found MM state record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// MM flags
 			case 0x24:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found MM flags record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Store status
 			case 0x25:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Store status record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Store status text
 			case 0x26:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Store status text record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Stored
 			case 0x27:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Stored record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Attributes
 			case 0x28:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Attributes record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Totals
 			case 0x29:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Totals record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Mbox totals
 			case 0x2A:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Mbox totals record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Quotas
 			case 0x2B:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Quotas record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Mbox quotas
 			case 0x2C:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Mbox quotas record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Message count
 			case 0x2D:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Message count record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Content
 			case 0x2E:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Start
 			case 0x2F:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Start record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Additional headers
 			case 0x30:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Additional headers record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Distribution indicator
 			case 0x31:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Distribution indicator record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Element descriptor
 			case 0x32:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Element descriptor record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Limit
 			case 0x33:
@@ -887,73 +887,73 @@ static int MMSProcessMessage(char *Pointer_String_Raw_MMS_File_Path, char *Point
 			case 0x34:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Recommended retrieval mode record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Recommended retrieval mode text
 			case 0x35:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Recommended retrieval mode text record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Status text
 			case 0x36:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Status text record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Applic ID
 			case 0x37:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Applic ID record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Reply applic ID
 			case 0x38:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Reply applic ID record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Aux applic info
 			case 0x39:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Aux applic info record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Content class
 			case 0x3A:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Content class record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// DRM content
 			case 0x3B:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found DRM content record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Adaptation allowed
 			case 0x3C:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Adaptation allowed record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Replace ID
 			case 0x3D:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Replace ID record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Cancel ID
 			case 0x3E:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Cancel ID record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			// Cancel status
 			case 0x3F:
 				LOG_DEBUG(MMS_IS_DEBUG_ENABLED, "Found Cancel status record.\n");
 				// TODO
-				break;
+				goto Exit;
 
 			default:
 				LOG("Unknown field : %d.\n", Byte);
@@ -1133,7 +1133,7 @@ int MMSDownloadAll(TSerialPortID Serial_Port_ID)
 		// Create the directory if it does not exist yet
 		if (UtilityCreateDirectory(String_Temporary) != 0) return -1;
 	}
-	// Archived messages are working separately, so the output directory must be created by hand
+	// Archived messages are handled separately, so the output directory must be created by hand
 	if (UtilityCreateDirectory("Output/MMS/Archives") != 0) return -1;
 
 	ListInitialize(&List_Processed_MMS_Files);
