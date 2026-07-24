@@ -315,3 +315,17 @@ Exit_Number_Found:
 	else strcpy(Pointer_String_Name, Phone_Book_Entries[Index].String_Name);
 	return 1;
 }
+
+int PhoneBookDownloadAll(TSerialPortID Serial_Port_ID, char *Pointer_String_Destination_PC_Path)
+{
+	// Try to create the output directory
+	if (UtilityCreateDirectory(Pointer_String_Destination_PC_Path) != 0)
+	{
+		LOG("Error : failed to create the output directory \"%s\" on the PC.\n", Pointer_String_Destination_PC_Path);
+		return -1;
+	}
+
+	// TODO
+
+	return 0;
+}
