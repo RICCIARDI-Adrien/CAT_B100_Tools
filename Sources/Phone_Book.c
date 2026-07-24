@@ -28,6 +28,60 @@ static int Phone_Book_Entries_Count;
 //-------------------------------------------------------------------------------------------------
 // Private functions
 //-------------------------------------------------------------------------------------------------
+/** Select the phone internal memory, the charset and retrieve the index range.
+ * @param Serial_Port_ID The phone serial port.
+ * @param Pointer_First_Index On output, contain the first index of the available phone book entries.
+ * @param Pointer_First_Index On output, contain the last index of the available phone book entries.
+ * @return -1 if an error occurred,
+ * @return 0 on success.
+ */
+static int PhoneBookConfigureReading(TSerialPortID Serial_Port_ID, int *Pointer_First_Index, int *Pointer_Last_Index)
+{
+	char String_Answer[256];
+
+	// Select the phone internal memory phone book
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+CPBS=\"ME\"") != 0)
+	{
+		LOG("Error : failed to select the phone internal phone book.\n");
+		return -1;
+	}
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
+	if (strcmp(String_Answer, "OK") != 0)
+	{
+		LOG("Error : failed to send the command to select the phone internal phone book.\n");
+		return -1;
+	}
+
+	// Select the UTF-16 character set for the contact names
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+CSCS=\"UCS2\"") != 0)
+	{
+		LOG("Error : failed to select the UTF-16 character set for the contact names.\n");
+		return -1;
+	}
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
+	if (strcmp(String_Answer, "OK") != 0)
+	{
+		LOG("Error : failed to send the command to select the UTF-16 character set for the contact names.\n");
+		return -1;
+	}
+
+	// Find the amount of phone book indexes
+	if (ATCommandSendCommand(Serial_Port_ID, "AT+CPBR=?") != 0)
+	{
+		LOG("Error : failed to select the phone internal phone book.\n");
+		return -1;
+	}
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
+	if (sscanf(String_Answer, "+CPBR: (%d-%d)", Pointer_First_Index, Pointer_Last_Index) != 2)
+	{
+		LOG("Error : failed to retrieve the phone book first and last indexes.\n");
+		return -1;
+	}
+	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "First index : %d, last index : %d.\n", *Pointer_First_Index, *Pointer_Last_Index);
+
+	return 0;
+}
+
 /** Read a single phone book entry from the preselected phone book.
  * @param Serial_Port_ID The phone serial port.
  * @param Entry_Index The ID of the phone book entry to read.
@@ -192,49 +246,15 @@ static int PhoneBookSearchNumber(char *Pointer_String_Number)
 //-------------------------------------------------------------------------------------------------
 int PhoneBookReadAllEntries(TSerialPortID Serial_Port_ID)
 {
-	char String_Answer[256];
 	int First_Index, Last_Index, i, Result, Failures_Count;
 	TPhoneBookEntry Phone_Book_Entry;
 
-	// Select the phone internal memory phone book
-	if (ATCommandSendCommand(Serial_Port_ID, "AT+CPBS=\"ME\"") != 0)
+	// Select the phone book memory and the charset
+	if (PhoneBookConfigureReading(Serial_Port_ID, &First_Index, &Last_Index) != 0)
 	{
-		LOG("Error : failed to select the phone internal phone book.\n");
+		LOG("Error : failed to configure the phone book reading operation.\n");
 		return -1;
 	}
-	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
-	if (strcmp(String_Answer, "OK") != 0)
-	{
-		LOG("Error : failed to send the command to select the phone internal phone book.\n");
-		return -1;
-	}
-
-	// Select the UTF-16 character set for the contact names
-	if (ATCommandSendCommand(Serial_Port_ID, "AT+CSCS=\"UCS2\"") != 0)
-	{
-		LOG("Error : failed to select the UTF-16 character set for the contact names.\n");
-		return -1;
-	}
-	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
-	if (strcmp(String_Answer, "OK") != 0)
-	{
-		LOG("Error : failed to send the command to select the UTF-16 character set for the contact names.\n");
-		return -1;
-	}
-
-	// Find the amount of phone book indexes
-	if (ATCommandSendCommand(Serial_Port_ID, "AT+CPBR=?") != 0)
-	{
-		LOG("Error : failed to select the phone internal phone book.\n");
-		return -1;
-	}
-	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
-	if (sscanf(String_Answer, "+CPBR: (%d-%d)", &First_Index, &Last_Index) != 2)
-	{
-		LOG("Error : failed to retrieve the phone book first and last indexes.\n");
-		return -1;
-	}
-	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "First index : %d, last index : %d.\n", First_Index, Last_Index);
 
 	// Try to read all entries
 	Phone_Book_Entries_Count = 0;
