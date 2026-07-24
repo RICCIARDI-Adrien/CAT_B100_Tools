@@ -6,6 +6,7 @@
 #include <File_Manager.h>
 #include <List.h>
 #include <MMS.h>
+#include <Phone_Book.h>
 #include <Serial_Port.h>
 #include <SMS.h>
 #include <stdio.h>
@@ -24,6 +25,7 @@ typedef enum
 	MAIN_COMMAND_GET_FILE,
 	MAIN_COMMAND_SEND_FILE,
 	MAIN_COMMAND_GET_DIRECTORY,
+	MAIN_COMMAND_GET_PHONEBOOK,
 	MAIN_COMMAND_GET_ALL_MMS,
 	MAIN_COMMAND_GET_ALL_SMS,
 	MAIN_COMMANDS_COUNT
@@ -44,6 +46,8 @@ static void MainDisplayUsage(char *Pointer_String_Program_Name)
 		"  get-file <absolute file path on the phone> <output file path on the PC>\n"
 		"  send-file <source file path on the PC> <absolute target file path on the phone>\n"
 		"  get-directory <absolute directory path on the phone> <output directory path on the PC>\n"
+		"Phonebook commands :\n"
+		"  get-phonebook <output directory path on the PC>\n"
 		"MMS commands :\n"
 		"  get-all-mms\n"
 		"SMS commands :\n"
@@ -179,6 +183,22 @@ int main(int argc, char *argv[])
 			Command = MAIN_COMMAND_GET_DIRECTORY;
 			break;
 		}
+		// MAIN_COMMAND_GET_PHONEBOOK
+		else if (strcmp(argv[i], "get-phonebook") == 0)
+		{
+			// Retrieve the first mandatory argument
+			i++;
+			if (i == argc)
+			{
+				printf("Error : the get-phonebook command needs one argument, the output directory path on the PC.\n");
+				MainDisplayUsage(argv[0]);
+				return EXIT_FAILURE;
+			}
+			Pointer_String_Argument_1 = argv[i];
+
+			Command = MAIN_COMMAND_GET_PHONEBOOK;
+			break;
+		}
 		// MAIN_COMMAND_GET_ALL_MMS
 		else if (strcmp(argv[i], "get-all-mms") == 0)
 		{
@@ -261,6 +281,15 @@ int main(int argc, char *argv[])
 				goto Exit;
 			}
 			printf("The directory \"%s\" content was successfully retrieved from the phone.\n", Pointer_String_Argument_1);
+			break;
+
+		case MAIN_COMMAND_GET_PHONEBOOK:
+			if (PhoneBookDownloadAll(Serial_Port_ID, Pointer_String_Argument_1) != 0)
+			{
+				printf("Error : could not retrieve the phonebook content.\n");
+				goto Exit;
+			}
+			printf("The phonebook content was successfully retrieved from the phone.\n");
 			break;
 
 		case MAIN_COMMAND_GET_ALL_MMS:
