@@ -79,6 +79,22 @@ static int PhoneBookConfigureReading(TSerialPortID Serial_Port_ID, int *Pointer_
 	}
 	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "First index : %d, last index : %d.\n", *Pointer_First_Index, *Pointer_Last_Index);
 
+	// Wait for the line separator
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
+	if (String_Answer[0] != 0)
+	{
+		LOG("Error : failed to receive the line separator answer.\n");
+		return -1;
+	}
+
+	// Wait for the ending "OK" answer
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Answer, sizeof(String_Answer)) < 0) return -1;
+	if (strcmp(String_Answer, "OK") != 0)
+	{
+		LOG("Error : failed to receive the ending \"OK\" answer.\n");
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -208,7 +224,7 @@ static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Inde
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
 	if (String_Temporary[0] != 0)
 	{
-		LOG("Error : failed to receive the line separator answer when reading entry %d.\n", Entry_Index);
+		LOG("Error : failed to receive the line separator answer while reading entry %d.\n", Entry_Index);
 		return -1;
 	}
 
@@ -216,7 +232,7 @@ static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Inde
 	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
 	if (strcmp(String_Temporary, "OK") != 0)
 	{
-		LOG("Error : failed to receive the ending \"OK\" answer when reading entry %d.\n", Entry_Index);
+		LOG("Error : failed to receive the ending \"OK\" answer while reading entry %d.\n", Entry_Index);
 		return -1;
 	}
 
