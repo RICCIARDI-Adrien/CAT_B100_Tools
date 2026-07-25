@@ -3,6 +3,7 @@
  * @author Adrien RICCIARDI
  */
 #include <AT_Command.h>
+#include <File_Manager.h>
 #include <Log.h>
 #include <Phone_Book.h>
 #include <string.h>
@@ -16,6 +17,9 @@
 
 /** The maximum amount of phone book entries that can be handled by the program. */
 #define PHONE_BOOK_MAXIMUM_ENTRIES 500
+
+/** The retrieved phone book entries will be stored to this directory. */
+#define PHONE_BOOK_STRING_OUTPUT_DIRECTORY "Output/Phone_Book"
 
 //-------------------------------------------------------------------------------------------------
 // Private variables
@@ -239,6 +243,85 @@ static int PhoneBookReadSingleEntry(TSerialPortID Serial_Port_ID, int Entry_Inde
 	return 1;
 }
 
+/** Retrieve the vCard file associated with an phone book entry.
+ * @param Serial_Port_ID The phone serial port.
+ * @param Entry_Index The identifier of the entry in the phone book.
+ * @param Pointer_String_File_Destination_PC_Path The path and name for the output file to create if the phone book entry contains data.
+ * @return -1 if an error occurred,
+ * @return 0 if the entry is empty,
+ * @return 1 if the entry contains valid data.
+ */
+static int PhoneBookReadVCard(TSerialPortID Serial_Port_ID, int Entry_Index, char *Pointer_String_File_Destination_PC_Path)
+{
+	char String_Answer[256], String_Temporary[sizeof(String_Answer)];
+	int Size, Result;
+
+	// Send the command
+	snprintf(String_Temporary, sizeof(String_Temporary), "AT+EVCARD=1,%d", Entry_Index);
+	if (ATCommandSendCommand(Serial_Port_ID, String_Temporary) != 0)
+	{
+		LOG("Error : failed to send the read vCard file for index %d command.\n", Entry_Index);
+		return -1;
+	}
+
+	// Retrieve the generated vCard file path on the phone
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
+	if (strncmp(String_Temporary, "+EVCARD: \"", 10) != 0)
+	{
+		LOG("Error : received a bad answer instead of the generated vCard file path (\"%s\").\n", String_Temporary);
+		return -1;
+	}
+	Result = sscanf(String_Temporary, "+EVCARD: \"%[0-9A-Fa-f]", String_Answer); // This can't overflow because the String_Temporary buffer has as much room as the String_Answer buffer, which contains the data that will be copied to String_Temporary plus additional characters
+
+	// Wait for the line separator
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
+	if (String_Temporary[0] != 0)
+	{
+		LOG("Error : failed to receive the line separator answer while reading entry %d.\n", Entry_Index);
+		return -1;
+	}
+
+	// Wait for the ending "OK" answer
+	if (ATCommandReceiveAnswerLine(Serial_Port_ID, String_Temporary, sizeof(String_Temporary)) < 0) return -1;
+	if (strcmp(String_Temporary, "OK") != 0)
+	{
+		LOG("Error : failed to receive the ending \"OK\" answer while reading entry %d.\n", Entry_Index);
+		return -1;
+	}
+
+	// The resulting path is empty if the phone book entry is empty
+	if (Result != 1)
+	{
+		LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "The phone book entry %d is empty.\n", Entry_Index);
+		return 1;
+	}
+
+	// Convert the file path to binary UTF-16, so it can be converted to UTF-8
+	Size = ATCommandConvertHexadecimalToBinary(String_Answer, (unsigned char *) String_Temporary, sizeof(String_Temporary));
+	if (Size < 0)
+	{
+		LOG("Error : failed to convert the vCard file path hexadecimal \"%s\" string to binary.\n", String_Temporary);
+		return -1;
+	}
+	// Convert the file path to UTF-8
+	if (UtilityConvertString(String_Temporary, String_Answer, UTILITY_CHARACTER_SET_UTF16_BIG_ENDIAN, UTILITY_CHARACTER_SET_UTF8, Size, sizeof(String_Temporary)) < 0)
+	{
+		LOG("Error : could not convert the file path from UTF-16 to UTF-8.\n");
+		return -1;
+	}
+	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "The vCard file path on the phone is \"%s\".\n", String_Answer);
+
+	// Retrieve the file
+	if (FileManagerDownloadFile(Serial_Port_ID, String_Answer, Pointer_String_File_Destination_PC_Path) != 0)
+	{
+		LOG("Error : failed to download the file \"%s\" for the entry %d, the target file is \"%s\".\n", String_Answer, Entry_Index, Pointer_String_File_Destination_PC_Path);
+		return -1;
+	}
+	LOG_DEBUG(PHONE_BOOK_IS_DEBUG_ENABLED, "Successfully saved the phone book entry %d to the local file \"%s\".\n", Entry_Index, Pointer_String_File_Destination_PC_Path);
+
+	return 0;
+}
+
 /** Search for a phone number string in the whole phone book.
  * @param Pointer_String_Number The number to search for.
  * @return -1 if the number was not found,
@@ -354,14 +437,37 @@ Exit_Number_Found:
 
 int PhoneBookDownloadAll(TSerialPortID Serial_Port_ID, char *Pointer_String_Destination_PC_Path)
 {
+	int First_Index, Last_Index, i, Result;
+	char String_Temporary[512];
+
 	// Try to create the output directory
-	if (UtilityCreateDirectory(Pointer_String_Destination_PC_Path) != 0)
+	if (UtilityCreateDirectory(PHONE_BOOK_STRING_OUTPUT_DIRECTORY) != 0)
 	{
-		LOG("Error : failed to create the output directory \"%s\" on the PC.\n", Pointer_String_Destination_PC_Path);
+		LOG("Error : failed to create the output directory " PHONE_BOOK_STRING_OUTPUT_DIRECTORY " on the PC.\n");
 		return -1;
 	}
 
-	// TODO
+	// Prepare for data retrieval
+	if (PhoneBookConfigureReading(Serial_Port_ID, &First_Index, &Last_Index) != 0)
+	{
+		LOG("Error : failed to configure the reading.\n");
+		return -1;
+	}
+
+	// Retrieve all entries
+	for (i = First_Index; i < Last_Index; i++)
+	{
+		// Create the vCard file name
+		snprintf(String_Temporary, sizeof(String_Temporary), PHONE_BOOK_STRING_OUTPUT_DIRECTORY "/%d.vcf", i);
+
+		// Try to retrieve the vCard entry
+		Result = PhoneBookReadVCard(Serial_Port_ID, i, String_Temporary);
+		if (Result < 0)
+		{
+			LOG("Error : failed to retrieve the vCard file of the phone book entry %d.\n", i);
+			return -1;
+		}
+	}
 
 	return 0;
 }
