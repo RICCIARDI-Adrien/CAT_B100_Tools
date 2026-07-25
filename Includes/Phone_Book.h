@@ -37,10 +37,9 @@ int PhoneBookGetNameFromNumber(char *Pointer_String_Number, char *Pointer_String
 
 /** Download each phone book entry into the vCard file format.
  * @param Serial_Port_ID The phone serial port.
- * @param Pointer_String_Destination_PC_Path On output, all retrieved vCard files will be stored to this directory. The directory will be automatically created if not existing.
  * @return -1 if an error occurred,
  * @return 0 on success.
  */
-int PhoneBookDownloadAll(TSerialPortID Serial_Port_ID, char *Pointer_String_Destination_PC_Path);
+int PhoneBookDownloadAll(TSerialPortID Serial_Port_ID);
 
 #endif

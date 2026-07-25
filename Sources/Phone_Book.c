@@ -435,7 +435,7 @@ Exit_Number_Found:
 	return 1;
 }
 
-int PhoneBookDownloadAll(TSerialPortID Serial_Port_ID, char *Pointer_String_Destination_PC_Path)
+int PhoneBookDownloadAll(TSerialPortID Serial_Port_ID)
 {
 	int First_Index, Last_Index, i, Result;
 	char String_Temporary[512];
